@@ -20,6 +20,10 @@ export default function MapScreen() {
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
+  // ScrollView ref for controlling the image carousel
+  const scrollViewRef = useRef<ScrollView>(null);
+  const screenWidth = Dimensions.get('window').width;
+  
   // Animation values
   const exploreAnimation = useRef(new Animated.Value(0)).current;
   const profileAnimation = useRef(new Animated.Value(0)).current;
@@ -82,6 +86,7 @@ export default function MapScreen() {
     }).start(({ finished }) => {
       if (finished && !detailVisible) {
         setSelectedPhoto(null);
+        setCurrentImageIndex(0);
       }
     });
   }, [detailVisible]);
@@ -102,21 +107,39 @@ export default function MapScreen() {
     outputRange: [Dimensions.get('window').height, 0],
   });
   
+  // Handle image scroll events
+  const handleScroll = (event: any) => {
+    if (!selectedPhoto) return;
+    
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const newIndex = Math.round(contentOffsetX / screenWidth);
+    
+    if (newIndex !== currentImageIndex) {
+      setCurrentImageIndex(newIndex);
+    }
+  };
+  
+  // Method to navigate to a specific image
+  const navigateToImage = (index: number) => {
+    if (!selectedPhoto || !scrollViewRef.current) return;
+    
+    scrollViewRef.current.scrollTo({
+      x: index * screenWidth,
+      animated: true
+    });
+    setCurrentImageIndex(index);
+  };
+
   // Preload images for smoother transitions
   useEffect(() => {
     if (selectedPhoto) {
-      // Preload next and previous images
-      if (currentImageIndex < selectedPhoto.images.length - 1) {
-        Image.prefetch(selectedPhoto.images[currentImageIndex + 1])
-          .catch(err => console.log('Error preloading next image:', err));
-      }
-      
-      if (currentImageIndex > 0) {
-        Image.prefetch(selectedPhoto.images[currentImageIndex - 1])
-          .catch(err => console.log('Error preloading prev image:', err));
-      }
+      // Preload all images in the carousel
+      selectedPhoto.images.forEach(imageUrl => {
+        Image.prefetch(imageUrl)
+          .catch(err => console.log('Error preloading image:', err));
+      });
     }
-  }, [selectedPhoto, currentImageIndex]);
+  }, [selectedPhoto]);
 
   return (
     <ThemedView style={styles.container}>
@@ -216,35 +239,27 @@ export default function MapScreen() {
             <IconSymbol name="xmark" size={20} color="#555" />
           </TouchableOpacity>
           
-          {/* Images container */}
+          {/* Images container with horizontal scrolling */}
           <ThemedView style={styles.imagesStack}>
-            <View style={styles.mainImageContainer}>
-              <Image 
-                source={{ uri: selectedPhoto.images[currentImageIndex] }} 
-                style={styles.mainImage}
-                resizeMode="cover"
-                onError={(e) => console.log('error:', e.nativeEvent.error)}
-              />
-            </View>
-            
-            {/* Navigation buttons and indicators */}
-            {currentImageIndex > 0 && (
-              <TouchableOpacity 
-                style={[styles.arrowButton, { left: 10 }]} 
-                onPress={() => setCurrentImageIndex(currentImageIndex - 1)}
-              >
-                <IconSymbol name="chevron.left" size={30} color="#fff" />
-              </TouchableOpacity>
-            )}
-            
-            {currentImageIndex < selectedPhoto.images.length - 1 && (
-              <TouchableOpacity 
-                style={[styles.arrowButton, { right: 10 }]} 
-                onPress={() => setCurrentImageIndex(currentImageIndex + 1)}
-              >
-                <IconSymbol name="chevron.right" size={30} color="#fff" />
-              </TouchableOpacity>
-            )}
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleScroll}
+              style={styles.imageCarousel}
+            >
+              {selectedPhoto.images.map((imageUrl, index) => (
+                <View key={index} style={[styles.carouselImageContainer, { width: screenWidth }]}>
+                  <Image 
+                    source={{ uri: imageUrl }}
+                    style={styles.mainImage}
+                    resizeMode="cover"
+                    onError={(e) => console.log('error:', e.nativeEvent.error)}
+                  />
+                </View>
+              ))}
+            </ScrollView>
             
             {/* Only show carousel dots if we have multiple images */}
             {selectedPhoto.images.length > 1 && (
@@ -252,7 +267,7 @@ export default function MapScreen() {
                 {selectedPhoto.images.map((_, index) => (
                   <TouchableOpacity
                     key={index}
-                    onPress={() => setCurrentImageIndex(index)}
+                    onPress={() => navigateToImage(index)}
                   >
                     <View 
                       style={[
@@ -425,6 +440,13 @@ const styles = StyleSheet.create({
     height: '40%',
     width: '100%',
     backgroundColor: '#f0f0f0',
+  },
+  imageCarousel: {
+    width: '100%',
+    height: '100%',
+  },
+  carouselImageContainer: {
+    height: '100%',
   },
   mainImageContainer: {
     position: 'absolute',
