@@ -1,16 +1,74 @@
-import { StyleSheet } from 'react-native';
-import React, { useState } from 'react';
+import { StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
 import MapView, { Marker } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { PhotoMarker } from '@/components/PhotoMarker';
 import { dummyPhotos } from '@/constants/DummyData';
 import { Photo } from '@/types/types';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { Colors } from '@/constants/Colors';
+import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function MapScreen() {
+  const router = useRouter();
+  const colorScheme = useColorScheme() ?? 'light';
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  
+  // Animation values
+  const exploreAnimation = useRef(new Animated.Value(0)).current;
+  const profileAnimation = useRef(new Animated.Value(0)).current;
+  
+  // Toggle menu
+  const toggleMenu = () => {
+    setMenuOpen(!menuOpen);
+  };
+  
+  // Animate menu items
+  useEffect(() => {
+    if (menuOpen) {
+      Animated.sequence([
+        Animated.timing(exploreAnimation, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(profileAnimation, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(exploreAnimation, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(profileAnimation, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [menuOpen]);
+  
+  // Calculate animations
+  const exploreTranslateY = exploreAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 70],
+  });
+  
+  const profileTranslateY = profileAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 130],
+  });
   
   return (
     <ThemedView style={styles.container}>
@@ -37,6 +95,62 @@ export default function MapScreen() {
           </Marker>
         ))}
       </MapView>
+      
+      {/* Menu button (three dots) */}
+      <TouchableOpacity 
+        style={[styles.fabMenu]} 
+        onPress={toggleMenu}
+      >
+        <IconSymbol name="chevron.left.forwardslash.chevron.right" size={24} color="white" />
+      </TouchableOpacity>
+      
+      {/* Explore button (appears when menu is opened) */}
+      <Animated.View style={[
+        styles.fabMenuItem,
+        { 
+          transform: [{ translateY: exploreTranslateY }],
+          opacity: exploreAnimation,
+          left: 20,
+        }
+      ]}>
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/explore');
+          }}
+        >
+          <IconSymbol name="photo.on.rectangle" size={24} color="white" />
+        </TouchableOpacity>
+      </Animated.View>
+      
+      {/* Profile button (appears when menu is opened) */}
+      <Animated.View style={[
+        styles.fabMenuItem,
+        { 
+          transform: [{ translateY: profileTranslateY }],
+          opacity: profileAnimation,
+          left: 20,
+        }
+      ]}>
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/profile');
+          }}
+        >
+          <IconSymbol name="person.fill" size={24} color="white" />
+        </TouchableOpacity>
+      </Animated.View>
+      
+      {/* Upload button (always visible) */}
+      <TouchableOpacity 
+        style={[styles.fabBottomRight]} 
+        onPress={() => router.push('/upload')}
+      >
+        <IconSymbol name="plus.circle.fill" size={32} color="white" />
+      </TouchableOpacity>
       
       {selectedPhoto && (
         <ThemedView style={styles.photoPreview}>
@@ -66,6 +180,57 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
+    elevation: 5,
+  },
+  fabMenu: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    backgroundColor: Colors.light.tint,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+    zIndex: 100,
+  },
+  fabMenuItem: {
+    position: 'absolute',
+    top: 50,
+    zIndex: 99,
+  },
+  fabButton: {
+    backgroundColor: Colors.light.tint,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  fabBottomRight: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    backgroundColor: Colors.light.tint,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
     elevation: 5,
   },
 });
