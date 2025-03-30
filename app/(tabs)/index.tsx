@@ -101,7 +101,7 @@ export default function MapScreen() {
         style={[styles.fabMenu]} 
         onPress={toggleMenu}
       >
-        <IconSymbol name="chevron.left.forwardslash.chevron.right" size={24} color="white" />
+        <IconSymbol name="ellipsis" size={22} color="#555" />
       </TouchableOpacity>
       
       {/* Explore button (appears when menu is opened) */}
@@ -120,7 +120,7 @@ export default function MapScreen() {
             router.push('/explore');
           }}
         >
-          <IconSymbol name="photo.on.rectangle" size={24} color="white" />
+          <IconSymbol name="photo.on.rectangle" size={22} color="#555" />
         </TouchableOpacity>
       </Animated.View>
       
@@ -140,7 +140,7 @@ export default function MapScreen() {
             router.push('/profile');
           }}
         >
-          <IconSymbol name="person.fill" size={24} color="white" />
+          <IconSymbol name="person.fill" size={22} color="#555" />
         </TouchableOpacity>
       </Animated.View>
       
@@ -149,7 +149,7 @@ export default function MapScreen() {
         style={[styles.fabBottomRight]} 
         onPress={() => router.push('/upload')}
       >
-        <IconSymbol name="plus.circle.fill" size={32} color="white" />
+        <IconSymbol name="plus.circle.fill" size={28} color="#555" />
       </TouchableOpacity>
       
       {selectedPhoto && (
@@ -186,17 +186,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 50,
     left: 20,
-    backgroundColor: Colors.light.tint,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
     zIndex: 100,
   },
   fabMenuItem: {
@@ -205,32 +205,32 @@ const styles = StyleSheet.create({
     zIndex: 99,
   },
   fabButton: {
-    backgroundColor: Colors.light.tint,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
   fabBottomRight: {
     position: 'absolute',
     bottom: 30,
     right: 20,
-    backgroundColor: Colors.light.tint,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
 });

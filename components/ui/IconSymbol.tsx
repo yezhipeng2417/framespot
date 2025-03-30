@@ -21,6 +21,7 @@ const MAPPING = {
   'heart.fill': 'favorite',
   'chat.bubble.fill': 'chat',
   'location.fill': 'location_on',
+  'ellipsis': 'more_vert',
 } as unknown as Partial<
   Record<
     import('expo-symbols').SymbolViewProps['name'],
