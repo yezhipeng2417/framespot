@@ -1,0 +1,36 @@
+{
+  "cli": {
+    "version": ">= 5.9.1"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {}
+  },
+  "deploy": {
+    "preview": {
+      "web": {
+        "env": {
+          "NODE_ENV": "development"
+        }
+      }
+    },
+    "production": {
+      "web": {
+        "env": {
+          "NODE_ENV": "production"
+        },
+        "buildTarget": "web",
+        "autoIncrementVersion": true
+      }
+    }
+  }
+}

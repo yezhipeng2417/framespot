@@ -1,0 +1,42 @@
+name: Deploy to EAS Hosting
+
+on:
+  push:
+    branches:
+      - main  # Deploy when pushing to main branch
+      - dev
+      - prod  # Also deploy when pushing to production branch
+  workflow_dispatch:  # Allow manual triggering of deployment
+
+jobs:
+  export:
+    name: Export Web App
+    steps:
+      - uses: actions/checkout@v3
+      - run: npm ci
+      - run: npx expo export --platform web
+
+  deploy-preview:
+    name: Deploy Preview
+    needs: export
+    type: eas-deploy
+    steps:
+      - run: npx eas-cli deploy --platform web --profile preview
+    
+  deploy-production:
+    name: Deploy Production
+    needs: export
+    if: ${{ github.ref == 'refs/heads/prod' }}  # Only deploy to production from prod branch
+    type: eas-deploy
+    steps:
+      - run: npx eas-cli deploy --platform web --profile production
+      
+  check-deployment:
+    name: Verify Deployment Status
+    needs: [deploy-preview]
+    steps:
+      - run: echo "Preview deployment complete. You can check your deployment at your-project.expo.app"
+      - run: |
+          echo "You can create aliases for your deployment with:"
+          echo "npx eas-cli domain:create"
+          echo "npx eas-cli domain:purchase" 
