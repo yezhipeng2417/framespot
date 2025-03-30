@@ -2,22 +2,20 @@ export interface Photo {
   id: string;
   title: string;
   description: string;
-  imageUrl: string;
+  images: string[];
   thumbnailUrl: string;
-  location: {
-    latitude: number;
-    longitude: number;
-    name: string;
-    address: string;
-  };
-  user: {
-    id: string;
-    name: string;
-    avatar: string;
-  };
+  location: Location;
+  user: User;
   likes: number;
   comments: number;
   createdAt: string;
+}
+
+export interface Location {
+  latitude: number;
+  longitude: number;
+  name: string;
+  address: string;
 }
 
 export interface User {

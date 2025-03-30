@@ -1,4 +1,4 @@
-import { StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View } from 'react-native';
 import React, { useState, useRef, useEffect } from 'react';
 import MapView, { Marker } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
@@ -10,7 +10,6 @@ import { PhotoMarker } from '@/components/PhotoMarker';
 import { dummyPhotos } from '@/constants/DummyData';
 import { Photo } from '@/types/types';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function MapScreen() {
@@ -18,14 +17,29 @@ export default function MapScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   // Animation values
   const exploreAnimation = useRef(new Animated.Value(0)).current;
   const profileAnimation = useRef(new Animated.Value(0)).current;
+  const detailAnimation = useRef(new Animated.Value(0)).current;
   
   // Toggle menu
   const toggleMenu = () => {
     setMenuOpen(!menuOpen);
+  };
+
+  // Handle photo selection
+  const handlePhotoPress = (photo: Photo) => {
+    setSelectedPhoto(photo);
+    setDetailVisible(true);
+    setCurrentImageIndex(0);
+  };
+
+  // Close detail view
+  const closeDetail = () => {
+    setDetailVisible(false);
   };
   
   // Animate menu items
@@ -58,6 +72,19 @@ export default function MapScreen() {
       ]).start();
     }
   }, [menuOpen]);
+
+  // Animate detail view
+  useEffect(() => {
+    Animated.timing(detailAnimation, {
+      toValue: detailVisible ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished && !detailVisible) {
+        setSelectedPhoto(null);
+      }
+    });
+  }, [detailVisible]);
   
   // Calculate animations
   const exploreTranslateY = exploreAnimation.interpolate({
@@ -69,7 +96,28 @@ export default function MapScreen() {
     inputRange: [0, 1],
     outputRange: [0, 130],
   });
+
+  const detailTranslateY = detailAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Dimensions.get('window').height, 0],
+  });
   
+  // Preload images for smoother transitions
+  useEffect(() => {
+    if (selectedPhoto) {
+      // Preload next and previous images
+      if (currentImageIndex < selectedPhoto.images.length - 1) {
+        Image.prefetch(selectedPhoto.images[currentImageIndex + 1])
+          .catch(err => console.log('Error preloading next image:', err));
+      }
+      
+      if (currentImageIndex > 0) {
+        Image.prefetch(selectedPhoto.images[currentImageIndex - 1])
+          .catch(err => console.log('Error preloading prev image:', err));
+      }
+    }
+  }, [selectedPhoto, currentImageIndex]);
+
   return (
     <ThemedView style={styles.container}>
       <StatusBar style="dark" />
@@ -89,7 +137,7 @@ export default function MapScreen() {
               latitude: photo.location.latitude,
               longitude: photo.location.longitude,
             }}
-            onPress={() => setSelectedPhoto(photo)}
+            onPress={() => handlePhotoPress(photo)}
           >
             <PhotoMarker photo={photo} />
           </Marker>
@@ -152,10 +200,117 @@ export default function MapScreen() {
         <IconSymbol name="plus.circle.fill" size={28} color="#555" />
       </TouchableOpacity>
       
+      {/* Photo Detail View */}
       {selectedPhoto && (
-        <ThemedView style={styles.photoPreview}>
-          <ThemedText type="subtitle">{selectedPhoto.title}</ThemedText>
-        </ThemedView>
+        <Animated.View 
+          style={[
+            styles.photoDetailContainer,
+            { transform: [{ translateY: detailTranslateY }] }
+          ]}
+        >
+          {/* Close button */}
+          <TouchableOpacity 
+            style={styles.closeButton}
+            onPress={closeDetail}
+          >
+            <IconSymbol name="xmark" size={20} color="#555" />
+          </TouchableOpacity>
+          
+          {/* Images container */}
+          <ThemedView style={styles.imagesStack}>
+            <View style={styles.mainImageContainer}>
+              <Image 
+                source={{ uri: selectedPhoto.images[currentImageIndex] }} 
+                style={styles.mainImage}
+                resizeMode="cover"
+                onError={(e) => console.log('error:', e.nativeEvent.error)}
+              />
+            </View>
+            
+            {/* Navigation buttons and indicators */}
+            {currentImageIndex > 0 && (
+              <TouchableOpacity 
+                style={[styles.arrowButton, { left: 10 }]} 
+                onPress={() => setCurrentImageIndex(currentImageIndex - 1)}
+              >
+                <IconSymbol name="chevron.left" size={30} color="#fff" />
+              </TouchableOpacity>
+            )}
+            
+            {currentImageIndex < selectedPhoto.images.length - 1 && (
+              <TouchableOpacity 
+                style={[styles.arrowButton, { right: 10 }]} 
+                onPress={() => setCurrentImageIndex(currentImageIndex + 1)}
+              >
+                <IconSymbol name="chevron.right" size={30} color="#fff" />
+              </TouchableOpacity>
+            )}
+            
+            {/* Only show carousel dots if we have multiple images */}
+            {selectedPhoto.images.length > 1 && (
+              <View style={styles.carouselDots}>
+                {selectedPhoto.images.map((_, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => setCurrentImageIndex(index)}
+                  >
+                    <View 
+                      style={[
+                        styles.dot, 
+                        index === currentImageIndex && styles.activeDot
+                      ]} 
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </ThemedView>
+          
+          {/* Photo details */}
+          <ScrollView style={styles.detailsContainer}>
+            <ThemedText type="title">{selectedPhoto.title}</ThemedText>
+            
+            {/* Location info */}
+            <ThemedView style={styles.locationRow}>
+              <IconSymbol name="location.fill" size={16} color="#555" />
+              <ThemedText style={styles.locationText}>{selectedPhoto.location.name}</ThemedText>
+            </ThemedView>
+            
+            {/* User info */}
+            <ThemedView style={styles.userRow}>
+              <Image 
+                source={{ uri: selectedPhoto.user.avatar }} 
+                style={styles.userAvatar}
+              />
+              <ThemedText style={styles.userName}>{selectedPhoto.user.name}</ThemedText>
+            </ThemedView>
+            
+            {/* Description */}
+            <ThemedText style={styles.description}>{selectedPhoto.description}</ThemedText>
+            
+            {/* Stats */}
+            <ThemedView style={styles.statsRow}>
+              <ThemedView style={styles.statItem}>
+                <IconSymbol name="heart.fill" size={16} color="#555" />
+                <ThemedText style={styles.statText}>{selectedPhoto.likes}</ThemedText>
+              </ThemedView>
+              
+              <ThemedView style={styles.statItem}>
+                <IconSymbol name="chat.bubble.fill" size={16} color="#555" />
+                <ThemedText style={styles.statText}>{selectedPhoto.comments}</ThemedText>
+              </ThemedView>
+              
+              <ThemedText style={styles.dateText}>
+                {new Date(selectedPhoto.createdAt).toLocaleDateString()}
+              </ThemedText>
+            </ThemedView>
+            
+            {/* Directions button */}
+            <TouchableOpacity style={styles.directionsButton}>
+              <ThemedText style={styles.directionsText}>Get Directions</ThemedText>
+            </TouchableOpacity>
+          </ScrollView>
+        </Animated.View>
       )}
     </ThemedView>
   );
@@ -232,5 +387,201 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 3,
+  },
+  photoDetailContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '65%',
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  imagesStack: {
+    height: '40%',
+    width: '100%',
+    backgroundColor: '#f0f0f0',
+  },
+  mainImageContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  mainImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  thumbnailsContainer: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    height: 70,
+    flexDirection: 'row',
+  },
+  thumbnailWrapper: {
+    height: 70,
+    width: 70,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  thumbnail: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  detailsContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  locationText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#555',
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  userAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  userName: {
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  description: {
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  statText: {
+    marginLeft: 4,
+    fontSize: 14,
+  },
+  dateText: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    color: '#777',
+  },
+  directionsButton: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  directionsText: {
+    fontWeight: '500',
+  },
+  noPhotosWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noPhotosText: {
+    fontSize: 14,
+    color: '#777',
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    position: 'absolute',
+    bottom: 16,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  activeDot: {
+    backgroundColor: 'white',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  debugInfo: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    padding: 5,
+    borderRadius: 5,
+  },
+  navButtons: {
+    position: 'absolute',
+    bottom: 60,
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  navButton: {
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    padding: 10,
+    borderRadius: 5,
+  },
+  arrowButton: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -25,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });

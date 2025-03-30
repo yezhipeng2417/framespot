@@ -34,7 +34,7 @@ export default function ExploreScreen() {
         numColumns={numColumns}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.tile}>
-            <Image source={{ uri: item.imageUrl }} style={styles.image} />
+            <Image source={{ uri: item.images[0] }} style={styles.image} />
             <ThemedView style={styles.infoContainer}>
               <ThemedText type="defaultSemiBold" numberOfLines={1}>{item.title}</ThemedText>
               <ThemedView style={styles.locationContainer}>

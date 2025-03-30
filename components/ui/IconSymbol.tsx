@@ -1,9 +1,12 @@
 // This file is a fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolWeight } from 'expo-symbols';
+import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
 import React from 'react';
 import { OpaqueColorValue, StyleProp, TextStyle } from 'react-native';
+
+// Add this type to override the SF Symbols types
+type CustomSymbols = SymbolViewProps['name'] | 'chat.bubble.fill';
 
 // Add your SFSymbol to MaterialIcons mappings here.
 const MAPPING = {
@@ -19,12 +22,12 @@ const MAPPING = {
   'person.fill': 'person',
   'bookmark.fill': 'bookmark',
   'heart.fill': 'favorite',
-  'chat.bubble.fill': 'chat',
+  'chat.bubble.fill': 'chat_bubble',
   'location.fill': 'location_on',
   'ellipsis': 'more_vert',
 } as unknown as Partial<
   Record<
-    import('expo-symbols').SymbolViewProps['name'],
+    CustomSymbols,
     React.ComponentProps<typeof MaterialIcons>['name']
   >
 >;
