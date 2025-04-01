@@ -1,3 +1,10 @@
+<!--
+ * @Description: 
+ * @Date: 2025-04-01 12:19:20
+ * @LastEditTime: 2025-04-01 16:13:54
+ * @FilePath: /framespot/README.md
+ * @LastEditors: Xinyi Yan
+-->
 # Welcome to your Expo app 👋
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
@@ -48,3 +55,7 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+sudo npm install --global '@expo/ngrok@^4.1.0' && npx expo start --tunnel
+
+npx expo start --tunnel

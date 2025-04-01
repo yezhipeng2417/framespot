@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import MapView, { Marker } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -14,11 +15,13 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function MapScreen() {
   const router = useRouter();
+  const { handleSignOut } = useAuth();
   const colorScheme = useColorScheme() ?? 'light';
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   
   // ScrollView ref for controlling the image carousel
   const scrollViewRef = useRef<ScrollView>(null);
@@ -141,6 +144,22 @@ export default function MapScreen() {
     }
   }, [selectedPhoto]);
 
+  // 处理个人资料按钮点击
+  const handleProfilePress = () => {
+    setMenuOpen(false);
+    setProfileMenuVisible(true);
+  };
+
+  // 处理登出
+  const onSignOutPress = async () => {
+    try {
+      setProfileMenuVisible(false);
+      await handleSignOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <StatusBar style="dark" />
@@ -206,14 +225,43 @@ export default function MapScreen() {
       ]}>
         <TouchableOpacity
           style={styles.fabButton}
-          onPress={() => {
-            setMenuOpen(false);
-            router.push('/profile');
-          }}
+          onPress={handleProfilePress}
         >
-          <IconSymbol name="person.fill" size={22} color="#555" />
+          <IconSymbol name="person.crop.circle" size={22} color="#555" />
         </TouchableOpacity>
       </Animated.View>
+      
+      {/* Profile Menu */}
+      {profileMenuVisible && (
+        <ThemedView style={styles.profileMenu}>
+          <TouchableOpacity 
+            style={styles.profileMenuItem}
+            onPress={() => {
+              setProfileMenuVisible(false);
+              router.push('/profile');
+            }}
+          >
+            <IconSymbol name="person" size={20} color="#555" />
+            <ThemedText style={styles.profileMenuText}>Profile</ThemedText>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.profileMenuItem, styles.signOutMenuItem]}
+            onPress={onSignOutPress}
+          >
+            <IconSymbol name="arrow.right.square" size={20} color="#FF3B30" />
+            <ThemedText style={[styles.profileMenuText, styles.signOutText]}>Sign Out</ThemedText>
+          </TouchableOpacity>
+        </ThemedView>
+      )}
+
+      {/* 点击空白处关闭个人资料菜单 */}
+      {profileMenuVisible && (
+        <TouchableOpacity
+          style={styles.overlay}
+          onPress={() => setProfileMenuVisible(false)}
+        />
+      )}
       
       {/* Upload button (always visible) */}
       <TouchableOpacity 
@@ -605,5 +653,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+  },
+  profileMenu: {
+    position: 'absolute',
+    top: 110,
+    left: 20,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  profileMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+  },
+  profileMenuText: {
+    marginLeft: 12,
+    fontSize: 16,
+  },
+  signOutMenuItem: {
+    marginTop: 4,
+  },
+  signOutText: {
+    color: '#FF3B30',
   },
 });
