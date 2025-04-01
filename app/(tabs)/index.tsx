@@ -685,6 +685,7 @@ const styles = StyleSheet.create({
   profileMenuText: {
     marginLeft: 12,
     fontSize: 16,
+    color: '#333333',
   },
   signOutMenuItem: {
     marginTop: 4,

@@ -1,3 +1,10 @@
+/*
+ * @Description: 
+ * @Date: 2025-04-01 17:41:06
+ * @LastEditTime: 2025-04-01 19:30:17
+ * @FilePath: /framespot/contexts/AuthContext.tsx
+ * @LastEditors: Xinyi Yan
+ */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthUser, getCurrentUser, signOut, isAvailable } from '@/lib/auth';
 
