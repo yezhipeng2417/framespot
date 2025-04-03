@@ -5,7 +5,10 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
     },
     "preview": {
       "distribution": "internal"
@@ -14,23 +17,5 @@
   },
   "submit": {
     "production": {}
-  },
-  "deploy": {
-    "preview": {
-      "web": {
-        "env": {
-          "NODE_ENV": "development"
-        }
-      }
-    },
-    "production": {
-      "web": {
-        "env": {
-          "NODE_ENV": "production"
-        },
-        "buildTarget": "web",
-        "autoIncrementVersion": true
-      }
-    }
   }
 }

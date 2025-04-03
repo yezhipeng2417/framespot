@@ -1,32 +1,24 @@
 import { Stack } from 'expo-router';
 import React from 'react';
 import { useRouter } from 'expo-router';
-import { signOut } from '@/lib/auth';
+import { Tabs } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 
-export default function LayoutRoot() {
+export default function TabLayout() {
   const router = useRouter();
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.replace('/');
-    } catch (error) {
-      console.error('Error during sign out:', error);
-    }
-  };
+  const { handleSignOut } = useAuth();
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen 
-        name="index" 
-        options={{ 
-          presentation: 'card',
+    <Tabs screenOptions={{ headerShown: false }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
         }}
-        initialParams={{ onSignOut: handleSignOut }}
       />
-      <Stack.Screen name="explore" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="upload" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
-    </Stack>
+      <Tabs.Screen name="explore" options={{ presentation: 'modal' }} />
+      <Tabs.Screen name="upload" options={{ presentation: 'modal' }} />
+      <Tabs.Screen name="profile" options={{ presentation: 'modal' }} />
+    </Tabs>
   );
 }

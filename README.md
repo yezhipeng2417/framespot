@@ -1,7 +1,7 @@
 <!--
  * @Description: 
  * @Date: 2025-04-01 12:19:20
- * @LastEditTime: 2025-04-01 16:13:54
+ * @LastEditTime: 2025-04-02 13:53:40
  * @FilePath: /framespot/README.md
  * @LastEditors: Xinyi Yan
 -->
@@ -56,6 +56,24 @@ Join our community of developers creating universal apps.
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
 
+
+
+
+错误信息和搜索结果来看，这确实是一个已知问题。让我分析一下具体情况：
+系统试图全局安装 @expo/ngrok，但似乎安装后仍然无法识别。这个问题在 macOS 上比较常见，可能与权限或路径有关。
+根据搜索结果，有几种解决方案：
+a. 直接在项目中安装 ngrok（而不是全局安装）：✅
+   npm install @expo/ngrok --save-dev
+b. 或者尝试使用 sudo 进行全局安装：
+   sudo npm install --global @expo/ngrok@^4.1.0
+
+
+
+
+
+
 sudo npm install --global '@expo/ngrok@^4.1.0' && npx expo start --tunnel
 
 npx expo start --tunnel
+
+

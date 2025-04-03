@@ -7,6 +7,7 @@
  */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthUser, getCurrentUser, signOut, isAvailable } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -47,6 +48,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     initialize();
+
+    // 监听认证状态变化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event);
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+      } else if (session) {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSignOut = async () => {
