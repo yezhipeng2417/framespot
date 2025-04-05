@@ -2,6 +2,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
+import * as Crypto from 'expo-crypto';
 
 const AUTH_KEY = 'auth_user';
 
@@ -23,7 +24,8 @@ export async function checkAppleCredentialState(userId: string): Promise<boolean
     const credentialState = await AppleAuthentication.getCredentialStateAsync(userId);
     console.log('Apple credential state:', credentialState);
     
-    return credentialState === AppleAuthentication.AppleAuthenticationCredentialState.AUTHORIZED;
+    // 2 表示 AUTHORIZED 状态
+    return credentialState === 2;
   } catch (error) {
     console.log('Error checking Apple credential:', error);
     return false;
@@ -41,14 +43,6 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
     if (!session) {
       console.log('No active session');
-      return null;
-    }
-
-    // 检查 Apple ID 凭证状态
-    const isAuthorized = await checkAppleCredentialState(session.user.id);
-    if (!isAuthorized) {
-      console.log('Apple ID not authorized, signing out...');
-      await signOut();
       return null;
     }
 
@@ -71,19 +65,29 @@ export async function signInWithApple(): Promise<AuthUser> {
       throw new Error('Apple Sign In is not supported on web');
     }
 
+    // 生成随机 nonce
+    const rawNonce = Math.random().toString(36).substring(2, 10);
+    
+    // 计算 nonce 的 SHA256 哈希值
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      rawNonce
+    );
+
     // 获取 Apple 认证凭证
     const credential = await AppleAuthentication.signInAsync({
       requestedScopes: [
         AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
         AppleAuthentication.AppleAuthenticationScope.EMAIL,
       ],
+      nonce: hashedNonce,
     });
 
     // 使用 Apple ID Token 登录 Supabase
     const { data: { user, session }, error } = await supabase.auth.signInWithIdToken({
       provider: 'apple',
       token: credential.identityToken!,
-      nonce: credential.nonce,
+      nonce: rawNonce, // 使用原始 nonce
     });
 
     if (error || !user) {
@@ -91,7 +95,40 @@ export async function signInWithApple(): Promise<AuthUser> {
       throw error || new Error('Failed to sign in with Supabase');
     }
 
-    // Wait for session to be established
+    if (!session) {
+      console.error('No session returned from Supabase');
+      throw new Error('Authentication failed: No session returned');
+    }
+
+    // 保存会话状态
+    console.log('Saving auth session...');
+    try {
+      await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+      console.log('Auth session saved successfully');
+
+      // 等待一段时间确保会话完全保存
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 验证会话
+      const { data: { session: verifySession }, error: verifyError } = await supabase.auth.getSession();
+      if (verifyError) {
+        console.error('Failed to verify session:', verifyError);
+        throw new Error('Session verification failed: ' + verifyError.message);
+      }
+      if (!verifySession) {
+        console.error('No session found during verification');
+        throw new Error('Session verification failed: No session found');
+      }
+      console.log('Session verified successfully');
+    } catch (error: any) {
+      console.error('Error during session handling:', error);
+      throw new Error('Failed to handle session: ' + error.message);
+    }
+
+    // 等待会话完全建立
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 更新用户元数据
@@ -161,11 +198,28 @@ export async function initAuth(): Promise<void> {
 
 export async function isAvailable(): Promise<boolean> {
   if (Platform.OS === 'web') {
-    console.log('Apple Sign In not available on web');
     return false;
   }
+  return await AppleAuthentication.isAvailableAsync();
+}
 
-  const available = await AppleAuthentication.isAvailableAsync();
-  console.log('Apple Sign In available:', available);
-  return available;
+// 获取用户资料
+export async function getUserProfile(userId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getUserProfile:', error);
+    return null;
+  }
 } 

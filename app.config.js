@@ -27,7 +27,7 @@ module.exports = {
     supabaseUrl: process.env.SUPABASE_URL,
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
     eas: {
-      projectId: 'your-project-id'
+      projectId: "d01c0a23-54fc-42ca-b500-a12aa3c74ebd"
     }
   },
   plugins: [

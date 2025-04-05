@@ -6,7 +6,7 @@
  * @LastEditors: Xinyi Yan
  */
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AuthUser, getCurrentUser, signOut, isAvailable } from '@/lib/auth';
+import { AuthUser, getCurrentUser, signOut, isAvailable, getUserProfile } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 interface AuthContextType {
@@ -35,7 +35,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('Checking user login status...');
           const currentUser = await getCurrentUser();
           console.log('Current user status:', currentUser ? 'Logged in' : 'Not logged in');
-          setUser(currentUser);
+          if (currentUser) {
+            // 获取完整的用户资料
+            const profile = await getUserProfile(currentUser.id);
+            if (profile) {
+              setUser({
+                ...currentUser,
+                fullName: profile.full_name,
+                avatarUrl: profile.avatar_url,
+              });
+            } else {
+              setUser(currentUser);
+            }
+          } else {
+            setUser(null);
+          }
         } else {
           console.log('Apple Sign In is not available');
           setUser(null);
@@ -56,7 +70,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       } else if (session) {
         const currentUser = await getCurrentUser();
-        setUser(currentUser);
+        if (currentUser) {
+          // 获取完整的用户资料
+          const profile = await getUserProfile(currentUser.id);
+          if (profile) {
+            setUser({
+              ...currentUser,
+              fullName: profile.full_name,
+              avatarUrl: profile.avatar_url,
+            });
+          } else {
+            setUser(currentUser);
+          }
+        }
       }
     });
 

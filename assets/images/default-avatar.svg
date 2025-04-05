@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <rect width="400" height="400" fill="#E2F3FF"/>
+    
+    <!-- Avatar shape -->
+    <circle cx="200" cy="160" r="70" fill="#4A90E2"/>
+    <path d="M200 250C133.333 250 80 290 80 340C80 373.333 120 400 200 400C280 400 320 373.333 320 340C320 290 266.667 250 200 250Z" fill="#4A90E2"/>
+</svg> 
