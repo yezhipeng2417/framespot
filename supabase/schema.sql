@@ -63,6 +63,7 @@ create table if not exists public.photos (
     description text,
     location jsonb not null,
     image_urls text[] not null,
+    thumbnail_url text,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
     constraint location_check check (

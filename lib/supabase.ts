@@ -4,6 +4,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system";
 import { decode } from "base64-arraybuffer";
+import { Image } from "react-native";
+import * as ImageManipulator from "expo-image-manipulator";
 
 const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
 const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
@@ -48,8 +50,13 @@ export interface Photo {
     name: string;
   };
   image_urls: string[];
+  thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
+  profiles?: {
+    username: string;
+    avatar_url: string | null;
+  };
 }
 
 // 获取用户配置文件
@@ -156,14 +163,18 @@ export async function updateUserProfile(
 export async function uploadImage(
   filePath: string,
   userId: string,
-  bucket: string = "photos"
-): Promise<string | null> {
+  bucket: string = "photos",
+  createThumbnail: boolean = true
+): Promise<{ originalUrl: string; thumbnailUrl: string | null } | null> {
   try {
     // 获取文件扩展名
     const ext = filePath.split(".").pop()?.toLowerCase() || "jpg";
-    const fileName = `${userId}/${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(7)}.${ext}`;
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(7);
+
+    // 生成文件名
+    const fileName = `${userId}/${timestamp}-${randomString}.${ext}`;
+    const thumbnailFileName = `${userId}/${timestamp}-${randomString}-thumb.${ext}`;
 
     // 使用 FileSystem API 读取文件
     const fileInfo = await FileSystem.getInfoAsync(filePath);
@@ -179,7 +190,7 @@ export async function uploadImage(
     // 将 base64 转换为 ArrayBuffer
     const arrayBuffer = decode(fileContent);
 
-    // 上传文件
+    // 上传原始图片
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(fileName, arrayBuffer, {
@@ -193,21 +204,61 @@ export async function uploadImage(
       return null;
     }
 
-    // 获取公开 URL
+    // 获取原始图片的公开 URL
     const {
-      data: { publicUrl },
+      data: { publicUrl: originalUrl },
     } = supabase.storage.from(bucket).getPublicUrl(fileName);
+
+    let thumbnailUrl: string | null = null;
+
+    // 如果需要创建缩略图
+    if (createThumbnail) {
+      try {
+        // 使用 ImageManipulator 创建缩略图
+        const manipResult = await ImageManipulator.manipulateAsync(
+          filePath,
+          [{ resize: { width: 200 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+
+        // 读取缩略图内容
+        const thumbnailContent = await FileSystem.readAsStringAsync(
+          manipResult.uri,
+          {
+            encoding: FileSystem.EncodingType.Base64,
+          }
+        );
+
+        // 将缩略图转换为 ArrayBuffer
+        const thumbnailArrayBuffer = decode(thumbnailContent);
+
+        // 上传缩略图
+        const { error: thumbnailError } = await supabase.storage
+          .from(bucket)
+          .upload(thumbnailFileName, thumbnailArrayBuffer, {
+            contentType: `image/${ext}`,
+            upsert: true,
+            cacheControl: "3600",
+          });
+
+        if (thumbnailError) {
+          console.error("Error uploading thumbnail:", thumbnailError);
+        } else {
+          // 获取缩略图的公开 URL
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from(bucket).getPublicUrl(thumbnailFileName);
+          thumbnailUrl = publicUrl;
+        }
+      } catch (thumbnailError) {
+        console.error("Error creating thumbnail:", thumbnailError);
+      }
+    }
 
     // 等待一小段时间让 CDN 缓存更新
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // 验证文件是否可访问
-    const checkResponse = await fetch(publicUrl);
-    if (!checkResponse.ok) {
-      throw new Error(`File not accessible: ${checkResponse.statusText}`);
-    }
-
-    return publicUrl;
+    return { originalUrl, thumbnailUrl };
   } catch (error) {
     console.error("Error in uploadImage:", error);
     return null;

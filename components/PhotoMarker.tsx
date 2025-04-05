@@ -5,7 +5,10 @@ import { Photo } from '@/types/types';
 export function PhotoMarker({ photo }: { photo: Photo }) {
   return (
     <View style={styles.container}>
-      <Image source={{ uri: photo.thumbnailUrl }} style={styles.thumbnail} />
+      <Image 
+        source={{ uri: photo.thumbnail_url || photo.image_urls[0] }} 
+        style={styles.thumbnail} 
+      />
     </View>
   );
 }

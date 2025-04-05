@@ -1,4 +1,4 @@
-import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View, Linking } from 'react-native';
 import React, { useState, useRef, useEffect } from 'react';
 import MapView, { Marker } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
@@ -8,10 +8,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { PhotoMarker } from '@/components/PhotoMarker';
-import { dummyPhotos } from '@/constants/DummyData';
-import { Photo } from '@/types/types';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { supabase } from '@/lib/supabase';
+import { Photo } from '@/lib/supabase';
 
 export default function MapScreen() {
   const router = useRouter();
@@ -22,6 +22,8 @@ export default function MapScreen() {
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   // ScrollView ref for controlling the image carousel
   const scrollViewRef = useRef<ScrollView>(null);
@@ -31,7 +33,52 @@ export default function MapScreen() {
   const exploreAnimation = useRef(new Animated.Value(0)).current;
   const profileAnimation = useRef(new Animated.Value(0)).current;
   const detailAnimation = useRef(new Animated.Value(0)).current;
-  
+
+  // Fetch photos from database
+  const fetchPhotos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('photos')
+        .select(`
+          *,
+          profiles:user_id (
+            username,
+            avatar_url
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setPhotos(data || []);
+    } catch (error) {
+      console.error('Error fetching photos:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPhotos();
+  }, []);
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    const subscription = supabase
+      .channel('photos')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'photos' }, () => {
+        // Refresh photos when changes occur
+        fetchPhotos();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // Toggle menu
   const toggleMenu = () => {
     setMenuOpen(!menuOpen);
@@ -137,7 +184,7 @@ export default function MapScreen() {
   useEffect(() => {
     if (selectedPhoto) {
       // Preload all images in the carousel
-      selectedPhoto.images.forEach(imageUrl => {
+      selectedPhoto.image_urls.forEach(imageUrl => {
         Image.prefetch(imageUrl)
           .catch(err => console.log('Error preloading image:', err));
       });
@@ -172,7 +219,7 @@ export default function MapScreen() {
           longitudeDelta: 0.0421,
         }}
       >
-        {dummyPhotos.map((photo: Photo) => (
+        {photos.map((photo) => (
           <Marker
             key={photo.id}
             coordinate={{
@@ -297,7 +344,7 @@ export default function MapScreen() {
               onMomentumScrollEnd={handleScroll}
               style={styles.imageCarousel}
             >
-              {selectedPhoto.images.map((imageUrl, index) => (
+              {selectedPhoto.image_urls.map((imageUrl, index) => (
                 <View key={index} style={[styles.carouselImageContainer, { width: screenWidth }]}>
                   <Image 
                     source={{ uri: imageUrl }}
@@ -310,9 +357,9 @@ export default function MapScreen() {
             </ScrollView>
             
             {/* Only show carousel dots if we have multiple images */}
-            {selectedPhoto.images.length > 1 && (
+            {selectedPhoto.image_urls.length > 1 && (
               <View style={styles.carouselDots}>
-                {selectedPhoto.images.map((_, index) => (
+                {selectedPhoto.image_urls.map((_, index) => (
                   <TouchableOpacity
                     key={index}
                     onPress={() => navigateToImage(index)}
@@ -342,10 +389,10 @@ export default function MapScreen() {
             {/* User info */}
             <ThemedView style={styles.userRow}>
               <Image 
-                source={{ uri: selectedPhoto.user.avatar }} 
+                source={{ uri: selectedPhoto.profiles?.avatar_url || 'https://via.placeholder.com/32' }} 
                 style={styles.userAvatar}
               />
-              <ThemedText style={styles.userName}>{selectedPhoto.user.name}</ThemedText>
+              <ThemedText style={styles.userName}>{selectedPhoto.profiles?.username || 'Unknown User'}</ThemedText>
             </ThemedView>
             
             {/* Description */}
@@ -353,23 +400,20 @@ export default function MapScreen() {
             
             {/* Stats */}
             <ThemedView style={styles.statsRow}>
-              <ThemedView style={styles.statItem}>
-                <IconSymbol name="heart.fill" size={16} color="#555" />
-                <ThemedText style={styles.statText}>{selectedPhoto.likes}</ThemedText>
-              </ThemedView>
-              
-              <ThemedView style={styles.statItem}>
-                <IconSymbol name="chat.bubble.fill" size={16} color="#555" />
-                <ThemedText style={styles.statText}>{selectedPhoto.comments}</ThemedText>
-              </ThemedView>
-              
               <ThemedText style={styles.dateText}>
-                {new Date(selectedPhoto.createdAt).toLocaleDateString()}
+                {new Date(selectedPhoto.created_at).toLocaleDateString()}
               </ThemedText>
             </ThemedView>
             
             {/* Directions button */}
-            <TouchableOpacity style={styles.directionsButton}>
+            <TouchableOpacity 
+              style={styles.directionsButton}
+              onPress={() => {
+                const { latitude, longitude } = selectedPhoto.location;
+                const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+                Linking.openURL(url);
+              }}
+            >
               <ThemedText style={styles.directionsText}>Get Directions</ThemedText>
             </TouchableOpacity>
           </ScrollView>
