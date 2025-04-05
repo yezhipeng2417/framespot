@@ -32,6 +32,9 @@ export default function MapScreen() {
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
   const [showReturnButton, setShowReturnButton] = useState(false);
+  const [currentRegion, setCurrentRegion] = useState<Region | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // ScrollView ref for controlling the image carousel
   const scrollViewRef = useRef<ScrollView>(null);
@@ -44,6 +47,35 @@ export default function MapScreen() {
   const returnButtonAnimation = useRef(new Animated.Value(0)).current;
 
   const mapRef = useRef<MapView>(null);
+
+  // 检查用户是否偏离当前位置
+  const checkLocationDeviation = useCallback((region: Region) => {
+    if (!userLocation) return;
+
+    const distance = calculateDistance(
+      region.latitude,
+      region.longitude,
+      userLocation.coords.latitude,
+      userLocation.coords.longitude
+    );
+
+    // 如果距离超过 10 公里，显示返回按钮
+    if (distance > 10) {
+      setShowReturnButton(true);
+      Animated.timing(returnButtonAnimation, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      setShowReturnButton(false);
+      Animated.timing(returnButtonAnimation, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [userLocation]);
 
   // 预加载图片
   const preloadImages = useCallback(async (photos: Photo[]) => {
@@ -78,10 +110,15 @@ export default function MapScreen() {
   }, []);
 
   // 获取照片数据
-  const fetchPhotos = async () => {
+  const fetchPhotos = async (region?: Region) => {
+    if (isFetching) return;
+    
     try {
+      setIsFetching(true);
       setIsLoading(true);
-      const { data, error } = await supabase
+      
+      // 构建查询条件
+      let query = supabase
         .from('photos')
         .select(`
           *,
@@ -92,39 +129,97 @@ export default function MapScreen() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        throw error;
+      // 如果提供了区域信息，添加地理范围过滤
+      if (region) {
+        const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
+        const latMin = latitude - latitudeDelta / 2;
+        const latMax = latitude + latitudeDelta / 2;
+        const lonMin = longitude - longitudeDelta / 2;
+        const lonMax = longitude + longitudeDelta / 2;
+
+        query = query
+          .gte('location->latitude', latMin)
+          .lte('location->latitude', latMax)
+          .gte('location->longitude', lonMin)
+          .lte('location->longitude', lonMax);
       }
 
-      setPhotos(data || []);
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching photos:', error);
+        return;
+      }
+
+      // 使用函数式更新确保状态更新的原子性
+      setPhotos(prevPhotos => {
+        const newPhotos = data || [];
+        // 如果新数据与现有数据相同，则不更新
+        if (JSON.stringify(prevPhotos) === JSON.stringify(newPhotos)) {
+          return prevPhotos;
+        }
+        return newPhotos;
+      });
       
       // 预加载图片
       if (data) {
-        preloadImages(data);
+        preloadImages(data).catch(error => {
+          console.error('Error preloading images:', error);
+        });
       }
     } catch (error) {
-      console.error('Error fetching photos:', error);
+      console.error('Error in fetchPhotos:', error);
     } finally {
       setIsLoading(false);
+      setIsFetching(false);
     }
   };
 
+  // 处理地图区域变化
+  const handleRegionChange = useCallback((region: Region) => {
+    // 清除之前的定时器
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+
+    setCurrentRegion(region);
+    checkLocationDeviation(region);
+    
+    // 使用防抖，延迟执行获取照片
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchPhotos(region);
+    }, 1000); // 增加延迟时间到 1 秒
+  }, [checkLocationDeviation]);
+
+  // 组件卸载时清理定时器
   useEffect(() => {
-    fetchPhotos();
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
   }, []);
 
-  // Subscribe to real-time updates
+  // 组件加载时检查位置权限
   useEffect(() => {
-    const subscription = supabase
-      .channel('photos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'photos' }, () => {
-        // Refresh photos when changes occur
-        fetchPhotos();
-      })
-      .subscribe();
+    checkLocationPermission();
+  }, []);
 
+  // 初始加载照片
+  useEffect(() => {
+    if (currentRegion && !isFetching) {
+      fetchPhotos(currentRegion);
+    }
+  }, [currentRegion]);
+
+  // 清理函数
+  useEffect(() => {
     return () => {
-      subscription.unsubscribe();
+      // 清理所有状态
+      setPhotos([]);
+      setCurrentRegion(null);
+      setIsFetching(false);
+      setIsLoading(false);
     };
   }, []);
 
@@ -266,35 +361,6 @@ export default function MapScreen() {
     }
   };
 
-  // 检查用户是否偏离当前位置
-  const checkLocationDeviation = useCallback((region: Region) => {
-    if (!userLocation) return;
-
-    const distance = calculateDistance(
-      region.latitude,
-      region.longitude,
-      userLocation.coords.latitude,
-      userLocation.coords.longitude
-    );
-
-    // 如果距离超过 10 公里，显示返回按钮
-    if (distance > 10) {
-      setShowReturnButton(true);
-      Animated.timing(returnButtonAnimation, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      setShowReturnButton(false);
-      Animated.timing(returnButtonAnimation, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [userLocation]);
-
   // 计算两点之间的距离（公里）
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // 地球半径（公里）
@@ -318,16 +384,11 @@ export default function MapScreen() {
       mapRef.current.animateToRegion({
         latitude: userLocation.coords.latitude,
         longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.1, // 城市级别的缩放
-        longitudeDelta: 0.1,
+        latitudeDelta: 0.01, // 更精确的缩放级别
+        longitudeDelta: 0.01,
       }, 500);
     }
   };
-
-  // 修改 handleRegionChange
-  const handleRegionChange = useCallback((region: Region) => {
-    checkLocationDeviation(region);
-  }, [checkLocationDeviation]);
 
   // 请求位置权限
   const requestLocationPermission = async () => {
@@ -389,8 +450,8 @@ export default function MapScreen() {
           mapRef.current.animateToRegion({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
           }, 500);
         }
       } else {
@@ -400,11 +461,6 @@ export default function MapScreen() {
       console.error('Error checking location permission:', error);
     }
   };
-
-  // 组件加载时检查位置权限
-  useEffect(() => {
-    checkLocationPermission();
-  }, []);
 
   return (
     <ThemedView style={styles.container}>
@@ -643,7 +699,6 @@ export default function MapScreen() {
             onPress={returnToUserLocation}
           >
             <IconSymbol name="location.fill" size={24} color="#fff" />
-            <ThemedText style={styles.returnButtonText}>Return to My Location</ThemedText>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -967,28 +1022,21 @@ const styles = StyleSheet.create({
   },
   returnButtonContainer: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
+    bottom: 100,
     right: 20,
     alignItems: 'center',
   },
   returnButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-  },
-  returnButtonText: {
-    color: '#fff',
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
