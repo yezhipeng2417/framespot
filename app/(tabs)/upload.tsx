@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, Image, TextInput, Alert, View, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import LottieView from 'lottie-react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as MediaLibrary from 'expo-media-library';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -15,6 +16,39 @@ import { LocationPicker } from '@/components/LocationPicker';
 import { supabase } from '@/lib/supabase';
 import { uploadImage } from '@/lib/supabase';
 
+interface ExifData {
+  ApertureValue?: number;
+  BrightnessValue?: number;
+  DateTime?: string;
+  DateTimeOriginal?: string;
+  ExposureTime?: number;
+  FNumber?: number;
+  FocalLength?: number;
+  FocalLenIn35mmFilm?: number;
+  ISOSpeedRatings?: number[];
+  Make?: string;
+  Model?: string;
+  PixelXDimension?: number;
+  PixelYDimension?: number;
+  ShutterSpeedValue?: number;
+  WhiteBalance?: number;
+}
+
+interface PhotoMetadata {
+  camera?: string;
+  lens?: string;
+  focalLength?: string;
+  aperture?: string;
+  shutterSpeed?: string;
+  iso?: string;
+  dateTime?: string;
+  device?: string;
+  software?: string;
+  resolution?: string;
+  whiteBalance?: string;
+  brightness?: string;
+}
+
 export default function UploadScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const [image, setImage] = useState<string | null>(null);
@@ -24,17 +58,130 @@ export default function UploadScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [showFirework, setShowFirework] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [metadata, setMetadata] = useState<PhotoMetadata | null>(null);
   const fireworkAnim = useRef<LottieView>(null);
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 1,
-    });
+  useEffect(() => {
+    requestPermissions();
+  }, []);
 
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
+  const requestPermissions = async () => {
+    try {
+      console.log('Requesting media library permissions...');
+      const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync();
+      console.log('Media library permission status:', mediaStatus);
+      if (mediaStatus !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant media library access to upload photos');
+      }
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      console.log('Checking media library permissions...');
+      const { status: mediaStatus } = await MediaLibrary.getPermissionsAsync();
+      console.log('Current media library permission status:', mediaStatus);
+      
+      if (mediaStatus !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant media library access to upload photos');
+        return;
+      }
+
+      console.log('Launching image picker...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+        exif: true,
+      });
+
+      console.log('Image picker result:', result);
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedAsset = result.assets[0];
+        console.log('Selected asset:', selectedAsset);
+        
+        setImage(selectedAsset.uri);
+        
+        if (selectedAsset.exif) {
+          const exif = selectedAsset.exif as ExifData;
+          console.log('EXIF data:', exif);
+          
+          const newMetadata: PhotoMetadata = {};
+          
+          // Only add valid metadata
+          if (exif?.Model || exif?.Make) {
+            newMetadata.camera = exif.Model || exif.Make;
+          }
+          
+          if (exif?.Model && exif?.Make) {
+            newMetadata.lens = `${exif.Make} ${exif.Model}`;
+          }
+          
+          if (exif?.FocalLength && exif?.FocalLenIn35mmFilm) {
+            newMetadata.focalLength = `${exif.FocalLength}mm (${exif.FocalLenIn35mmFilm}mm equivalent)`;
+          }
+          
+          if (exif?.FNumber) {
+            newMetadata.aperture = `f/${exif.FNumber}`;
+          }
+          
+          if (exif?.ExposureTime) {
+            newMetadata.shutterSpeed = `1/${Math.round(1/exif.ExposureTime)}s`;
+          }
+          
+          if (exif?.ISOSpeedRatings && exif.ISOSpeedRatings.length > 0) {
+            newMetadata.iso = `ISO ${exif.ISOSpeedRatings[0]}`;
+          }
+          
+          if (exif?.DateTime) {
+            try {
+              // EXIF date format is "YYYY:MM:DD HH:MM:SS"
+              const [datePart, timePart] = exif.DateTime.split(' ');
+              const [year, month, day] = datePart.split(':');
+              const [hour, minute] = timePart.split(':');
+              
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              
+              const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+              const dayName = days[date.getDay()];
+              const monthName = months[parseInt(month) - 1];
+              
+              const hourNum = parseInt(hour);
+              const ampm = hourNum >= 12 ? 'pm' : 'am';
+              const hour12 = hourNum % 12 || 12;
+              
+              newMetadata.dateTime = `${dayName}·${day} ${monthName} ${year}·${hour12}:${minute} ${ampm}`;
+            } catch (error) {
+              console.error('Error formatting date:', error);
+            }
+          }
+          
+          if (exif?.PixelXDimension && exif?.PixelYDimension) {
+            newMetadata.resolution = `${exif.PixelXDimension} x ${exif.PixelYDimension}`;
+          }
+          
+          if (exif?.WhiteBalance !== undefined) {
+            newMetadata.whiteBalance = exif.WhiteBalance === 0 ? 'Auto' : 'Manual';
+          }
+          
+          if (exif?.BrightnessValue !== undefined) {
+            newMetadata.brightness = `${exif.BrightnessValue.toFixed(2)}`;
+          }
+          
+          console.log('Processed metadata:', newMetadata);
+          setMetadata(newMetadata);
+        } else {
+          console.log('No EXIF data found');
+          setMetadata(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to load image metadata');
     }
   };
 
@@ -79,6 +226,7 @@ export default function UploadScreen() {
           location,
           image_urls: [uploadResult.originalUrl],
           thumbnail_url: uploadResult.thumbnailUrl || uploadResult.originalUrl,
+          metadata: metadata || {},
         })
         .select()
         .single();
@@ -100,6 +248,7 @@ export default function UploadScreen() {
         setTitle('');
         setDescription('');
         setLocation(null);
+        setMetadata(null);
         setShowFirework(false);
         router.back();
       }, 2000);
@@ -128,24 +277,107 @@ export default function UploadScreen() {
       >
         <ThemedText type="title" style={styles.title}>Share a Photo</ThemedText>
         
-        <TouchableOpacity style={styles.imageContainer} onPress={pickImage}>
-          {image ? (
-            <Image 
-              source={{ uri: image }} 
-              style={styles.previewImage}
-              resizeMode="contain"
-            />
-          ) : (
-            <ThemedView style={styles.placeholderContainer}>
-              <IconSymbol 
-                name="photo.on.rectangle" 
-                size={40} 
-                color={Colors[colorScheme].icon} 
+        <View style={styles.mainContent}>
+          <TouchableOpacity style={styles.imageContainer} onPress={pickImage}>
+            {image ? (
+              <Image 
+                source={{ uri: image }} 
+                style={styles.previewImage}
+                resizeMode="contain"
               />
-              <ThemedText>Tap to select a photo</ThemedText>
+            ) : (
+              <ThemedView style={styles.placeholderContainer}>
+                <IconSymbol 
+                  name="photo.on.rectangle" 
+                  size={40} 
+                  color={Colors[colorScheme].icon} 
+                />
+                <ThemedText>Tap to select a photo</ThemedText>
+              </ThemedView>
+            )}
+          </TouchableOpacity>
+
+          {/* Photo Metadata Display */}
+          {metadata && (
+            <ThemedView style={styles.metadataContainer}>
+              <ThemedText type="subtitle" style={styles.metadataTitle}>Photo Details</ThemedText>
+              
+              <View style={styles.metadataGrid}>
+                {metadata.camera && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="camera" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.camera}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.lens && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="camera.aperture" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.lens}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.focalLength && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="camera.viewfinder" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.focalLength}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.aperture && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="camera.aperture" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.aperture}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.shutterSpeed && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="timer" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.shutterSpeed}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.iso && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="light.max" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.iso}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.resolution && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="photo" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>{metadata.resolution}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.whiteBalance && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="lightbulb" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>WB: {metadata.whiteBalance}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.brightness && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="sun.max" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>Brightness: {metadata.brightness}</ThemedText>
+                  </View>
+                )}
+                
+                {metadata.dateTime && (
+                  <View style={styles.metadataItem}>
+                    <IconSymbol name="calendar" size={16} color={Colors[colorScheme].icon} />
+                    <ThemedText style={styles.metadataText}>
+                      {metadata.dateTime}
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
             </ThemedView>
           )}
-        </TouchableOpacity>
+        </View>
         
         <ThemedView style={styles.formContainer}>
           <TextInput
@@ -176,13 +408,7 @@ export default function UploadScreen() {
               placeholder="Write your description here..."
               placeholderTextColor={Colors[colorScheme].icon}
               value={description}
-              onChangeText={(text) => {
-                setDescription(text);
-                if (text.length > 0) {
-                  // 延迟收起，让用户看到输入的内容
-                  setTimeout(() => setIsDescriptionExpanded(false), 1000);
-                }
-              }}
+              onChangeText={setDescription}
               multiline
               autoFocus
             />
@@ -195,8 +421,6 @@ export default function UploadScreen() {
               Selected Location: {location.name}
             </ThemedText>
           )}
-
-          <View style={styles.spacer} />
         </ThemedView>
       </ScrollView>
 
@@ -243,16 +467,19 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingTop: 60,
-    paddingBottom: 100, // 为按钮留出空间
+    paddingBottom: 100,
+  },
+  mainContent: {
+    marginBottom: 24,
   },
   title: {
     marginBottom: 20,
   },
   imageContainer: {
-    height: 150, // 减小图片容器高度
+    height: 200,
     borderRadius: 12,
     overflow: 'hidden',
-    marginBottom: 20,
+    marginBottom: 16,
     backgroundColor: '#f0f0f0',
   },
   previewImage: {
@@ -295,6 +522,29 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: '#666',
+  },
+  metadataContainer: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+  },
+  metadataTitle: {
+    marginBottom: 12,
+  },
+  metadataGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: '45%',
+  },
+  metadataText: {
+    fontSize: 14,
   },
   spacer: {
     height: 20,

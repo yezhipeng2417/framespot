@@ -20,6 +20,18 @@ export interface Photo {
     name: string;
   };
   image_urls: string[];
+  thumbnail_url: string | null;
+  metadata?: {
+    camera?: string;
+    lens?: string;
+    focalLength?: string;
+    aperture?: string;
+    shutterSpeed?: string;
+    iso?: string;
+    dateTime?: string;
+    device?: string;
+    software?: string;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -42,14 +54,14 @@ export interface Comment {
 
 // 数据库表名常量
 export const DB_TABLES = {
-  PROFILES: 'profiles',
-  PHOTOS: 'photos',
-  LIKES: 'likes',
-  COMMENTS: 'comments',
+  PROFILES: "profiles",
+  PHOTOS: "photos",
+  LIKES: "likes",
+  COMMENTS: "comments",
 } as const;
 
 // 存储桶名称常量
 export const STORAGE_BUCKETS = {
-  AVATARS: 'avatars',
-  PHOTOS: 'photos',
-} as const; 
+  AVATARS: "avatars",
+  PHOTOS: "photos",
+} as const;
