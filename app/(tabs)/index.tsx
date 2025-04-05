@@ -38,6 +38,8 @@ export default function MapScreen() {
   const profileAnimation = useRef(new Animated.Value(0)).current;
   const detailAnimation = useRef(new Animated.Value(0)).current;
 
+  const mapRef = useRef<MapView>(null);
+
   // 预加载图片
   const preloadImages = useCallback(async (photos: Photo[]) => {
     try {
@@ -131,6 +133,16 @@ export default function MapScreen() {
     setSelectedPhoto(photo);
     setDetailVisible(true);
     setCurrentImageIndex(0);
+    
+    // Zoom in to the marker location
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: photo.location.latitude,
+        longitude: photo.location.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 500); // 500ms 动画时间
+    }
   };
 
   // Close detail view
@@ -259,6 +271,7 @@ export default function MapScreen() {
     <ThemedView style={styles.container}>
       <StatusBar style="dark" />
       <MapView
+        ref={mapRef}
         style={styles.map}
         initialRegion={{
           latitude: 37.78825,
