@@ -1,10 +1,11 @@
-import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View, Linking } from 'react-native';
+import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View, Linking, Alert } from 'react-native';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import * as FileSystem from 'expo-file-system';
+import * as Location from 'expo-location';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -28,6 +29,9 @@ export default function MapScreen() {
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
+  const [showReturnButton, setShowReturnButton] = useState(false);
   
   // ScrollView ref for controlling the image carousel
   const scrollViewRef = useRef<ScrollView>(null);
@@ -37,6 +41,7 @@ export default function MapScreen() {
   const exploreAnimation = useRef(new Animated.Value(0)).current;
   const profileAnimation = useRef(new Animated.Value(0)).current;
   const detailAnimation = useRef(new Animated.Value(0)).current;
+  const returnButtonAnimation = useRef(new Animated.Value(0)).current;
 
   const mapRef = useRef<MapView>(null);
 
@@ -261,10 +266,144 @@ export default function MapScreen() {
     }
   };
 
-  // 处理地图区域变化
+  // 检查用户是否偏离当前位置
+  const checkLocationDeviation = useCallback((region: Region) => {
+    if (!userLocation) return;
+
+    const distance = calculateDistance(
+      region.latitude,
+      region.longitude,
+      userLocation.coords.latitude,
+      userLocation.coords.longitude
+    );
+
+    // 如果距离超过 10 公里，显示返回按钮
+    if (distance > 10) {
+      setShowReturnButton(true);
+      Animated.timing(returnButtonAnimation, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      setShowReturnButton(false);
+      Animated.timing(returnButtonAnimation, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [userLocation]);
+
+  // 计算两点之间的距离（公里）
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // 地球半径（公里）
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const toRad = (value: number) => {
+    return value * Math.PI / 180;
+  };
+
+  // 返回到用户位置
+  const returnToUserLocation = () => {
+    if (userLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude,
+        latitudeDelta: 0.1, // 城市级别的缩放
+        longitudeDelta: 0.1,
+      }, 500);
+    }
+  };
+
+  // 修改 handleRegionChange
   const handleRegionChange = useCallback((region: Region) => {
-    // 可以在这里实现虚拟化加载
-    // 只加载当前可见区域内的标记
+    checkLocationDeviation(region);
+  }, [checkLocationDeviation]);
+
+  // 请求位置权限
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocationPermission(status);
+      
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserLocation(location);
+        
+        // 移动到用户位置
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 500);
+        }
+      } else {
+        Alert.alert(
+          'Location Permission Denied',
+          'We need your location permission to show nearby content. You can change this in your settings.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Error', 'Failed to get your location');
+    }
+  };
+
+  // 检查位置权限
+  const checkLocationPermission = async () => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      setLocationPermission(status);
+      
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserLocation(location);
+        
+        // 移动到用户位置
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.1,
+            longitudeDelta: 0.1,
+          }, 500);
+        }
+      } else {
+        requestLocationPermission();
+      }
+    } catch (error) {
+      console.error('Error checking location permission:', error);
+    }
+  };
+
+  // 组件加载时检查位置权限
+  useEffect(() => {
+    checkLocationPermission();
   }, []);
 
   return (
@@ -274,12 +413,14 @@ export default function MapScreen() {
         ref={mapRef}
         style={styles.map}
         initialRegion={{
-          latitude: 37.78825,
-          longitude: -122.4324,
-          latitudeDelta: 0.0922,
-          longitudeDelta: 0.0421,
+          latitude: userLocation?.coords.latitude ?? 37.78825,
+          longitude: userLocation?.coords.longitude ?? -122.4324,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1,
         }}
         onRegionChange={handleRegionChange}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
       >
         {photos.map((photo) => (
           <Marker
@@ -480,6 +621,30 @@ export default function MapScreen() {
               <ThemedText style={styles.directionsText}>Get Directions</ThemedText>
             </TouchableOpacity>
           </ScrollView>
+        </Animated.View>
+      )}
+
+      {/* Return to Location Button */}
+      {showReturnButton && (
+        <Animated.View 
+          style={[
+            styles.returnButtonContainer,
+            {
+              opacity: returnButtonAnimation,
+              transform: [{ translateY: returnButtonAnimation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [100, 0]
+              })}]
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            style={styles.returnButton}
+            onPress={returnToUserLocation}
+          >
+            <IconSymbol name="location.fill" size={24} color="#fff" />
+            <ThemedText style={styles.returnButtonText}>Return to My Location</ThemedText>
+          </TouchableOpacity>
         </Animated.View>
       )}
     </ThemedView>
@@ -799,5 +964,31 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#FF3B30',
+  },
+  returnButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+  },
+  returnButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  returnButtonText: {
+    color: '#fff',
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
