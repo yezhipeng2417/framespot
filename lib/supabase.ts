@@ -59,6 +59,26 @@ export interface Photo {
   };
 }
 
+// 数据库函数返回的照片类型
+interface PhotoWithDistance {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  location: {
+    latitude: number;
+    longitude: number;
+    name: string;
+  };
+  image_urls: string[];
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+  distance: number;
+  username: string;
+  avatar_url: string | null;
+}
+
 // 获取用户配置文件
 export async function getUserProfile(
   userId: string
@@ -324,4 +344,32 @@ export async function getNearbyPhotos(
   }
 
   return data;
+}
+
+// 获取照片（按距离和时间排序）
+export async function getPhotos(
+  latitude: number,
+  longitude: number,
+  limit: number = 20
+): Promise<Photo[]> {
+  const { data, error } = await supabase
+    .rpc("get_photos_with_distance", {
+      lat: latitude,
+      lng: longitude,
+    })
+    .limit(limit);
+
+  if (error) {
+    console.error("Error fetching photos:", error);
+    return [];
+  }
+
+  // 将返回的数据转换为 Photo 类型
+  return (data as PhotoWithDistance[]).map((photo) => ({
+    ...photo,
+    profiles: {
+      username: photo.username,
+      avatar_url: photo.avatar_url,
+    },
+  }));
 }
