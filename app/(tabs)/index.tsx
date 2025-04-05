@@ -110,8 +110,8 @@ export default function MapScreen() {
   }, []);
 
   // 获取照片数据
-  const fetchPhotos = async (region?: Region) => {
-    if (isFetching) return;
+  const fetchPhotos = async (region?: Region, isInitialLoad: boolean = false) => {
+    if (isFetching && !isInitialLoad) return;
     
     try {
       setIsFetching(true);
@@ -445,14 +445,21 @@ export default function MapScreen() {
         });
         setUserLocation(location);
         
+        // 设置当前区域并加载附近的图片
+        const region = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        };
+        setCurrentRegion(region);
+        
+        // 立即加载照片，不等待防抖
+        fetchPhotos(region, true);
+        
         // 移动到用户位置
         if (mapRef.current) {
-          mapRef.current.animateToRegion({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, 500);
+          mapRef.current.animateToRegion(region, 500);
         }
       } else {
         requestLocationPermission();
