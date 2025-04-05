@@ -665,6 +665,85 @@ export default function MapScreen() {
             {/* Description */}
             <ThemedText style={styles.description}>{selectedPhoto.description}</ThemedText>
             
+            {/* Photo Metadata */}
+            {selectedPhoto.metadata && (
+              <ThemedView style={styles.metadataContainer}>
+                <ThemedText type="subtitle" style={styles.metadataTitle}>Photo Details</ThemedText>
+                
+                <View style={styles.metadataGrid}>
+                  {selectedPhoto.metadata.camera && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.camera}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.lens && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera.aperture" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.lens}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.focalLength && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera.viewfinder" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.focalLength}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.aperture && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera.aperture" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.aperture}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.shutterSpeed && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="timer" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.shutterSpeed}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.iso && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="light.max" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.iso}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.resolution && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="photo" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.resolution}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.whiteBalance && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="lightbulb" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>WB: {selectedPhoto.metadata.whiteBalance}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.brightness && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="sun.max" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>Brightness: {selectedPhoto.metadata.brightness}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.dateTime && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="calendar" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.dateTime}</ThemedText>
+                    </View>
+                  )}
+                </View>
+              </ThemedView>
+            )}
+            
             {/* Stats */}
             <ThemedView style={styles.statsRow}>
               <ThemedText style={styles.dateText}>
@@ -1045,5 +1124,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  metadataContainer: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    marginVertical: 16,
+  },
+  metadataTitle: {
+    marginBottom: 12,
+  },
+  metadataGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: '45%',
+  },
+  metadataText: {
+    fontSize: 14,
   },
 });

@@ -14,13 +14,15 @@ export interface Photo {
   user_id: string;
   title: string;
   description: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
   location: {
     latitude: number;
     longitude: number;
     name: string;
   };
-  image_urls: string[];
-  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
   metadata?: {
     camera?: string;
     lens?: string;
@@ -29,11 +31,10 @@ export interface Photo {
     shutterSpeed?: string;
     iso?: string;
     dateTime?: string;
-    device?: string;
-    software?: string;
+    resolution?: string;
+    whiteBalance?: string;
+    brightness?: string;
   };
-  created_at: string;
-  updated_at: string;
 }
 
 export interface Like {
