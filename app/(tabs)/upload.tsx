@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { StyleSheet, TouchableOpacity, Image, TextInput, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { StyleSheet, TouchableOpacity, Image, TextInput, Alert, View, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
+import LottieView from 'lottie-react-native';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -19,12 +22,14 @@ export default function UploadScreen() {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState<{ latitude: number; longitude: number; name: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  
+  const [showFirework, setShowFirework] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const fireworkAnim = useRef<LottieView>(null);
+
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
       quality: 1,
     });
 
@@ -32,7 +37,7 @@ export default function UploadScreen() {
       setImage(result.assets[0].uri);
     }
   };
-  
+
   const handleSubmit = async () => {
     if (!image) {
       Alert.alert('Error', 'Please select an image');
@@ -83,16 +88,21 @@ export default function UploadScreen() {
         throw error;
       }
 
-      Alert.alert('Success', 'Your photo has been uploaded!');
-      
-      // Reset form
-      setImage(null);
-      setTitle('');
-      setDescription('');
-      setLocation(null);
-      
-      // Navigate back to home
-      router.back();
+      // Show firework animation
+      setShowFirework(true);
+      if (fireworkAnim.current) {
+        fireworkAnim.current.play();
+      }
+
+      // Reset form after a delay
+      setTimeout(() => {
+        setImage(null);
+        setTitle('');
+        setDescription('');
+        setLocation(null);
+        setShowFirework(false);
+        router.back();
+      }, 2000);
     } catch (error: any) {
       console.error('Error uploading photo:', error);
       let errorMessage = 'Failed to upload photo. Please try again.';
@@ -111,63 +121,114 @@ export default function UploadScreen() {
   
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title" style={styles.title}>Share a Photo</ThemedText>
-      
-      <TouchableOpacity style={styles.imageContainer} onPress={pickImage}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.previewImage} />
-        ) : (
-          <ThemedView style={styles.placeholderContainer}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <ThemedText type="title" style={styles.title}>Share a Photo</ThemedText>
+        
+        <TouchableOpacity style={styles.imageContainer} onPress={pickImage}>
+          {image ? (
+            <Image 
+              source={{ uri: image }} 
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          ) : (
+            <ThemedView style={styles.placeholderContainer}>
+              <IconSymbol 
+                name="photo.on.rectangle" 
+                size={40} 
+                color={Colors[colorScheme].icon} 
+              />
+              <ThemedText>Tap to select a photo</ThemedText>
+            </ThemedView>
+          )}
+        </TouchableOpacity>
+        
+        <ThemedView style={styles.formContainer}>
+          <TextInput
+            style={[styles.input, { color: Colors[colorScheme].text }]}
+            placeholder="Title"
+            placeholderTextColor={Colors[colorScheme].icon}
+            value={title}
+            onChangeText={setTitle}
+          />
+          
+          <TouchableOpacity 
+            style={styles.descriptionButton}
+            onPress={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+          >
+            <ThemedText style={styles.descriptionButtonText}>
+              {isDescriptionExpanded ? 'Description (click to collapse)' : 'Add Description (optional)'}
+            </ThemedText>
             <IconSymbol 
-              name="photo.on.rectangle" 
-              size={40} 
+              name={isDescriptionExpanded ? "chevron.up" : "chevron.down"} 
+              size={20} 
               color={Colors[colorScheme].icon} 
             />
-            <ThemedText>Tap to select a photo</ThemedText>
-          </ThemedView>
-        )}
+          </TouchableOpacity>
+
+          {isDescriptionExpanded && (
+            <TextInput
+              style={[styles.input, styles.descriptionInput, { color: Colors[colorScheme].text }]}
+              placeholder="Write your description here..."
+              placeholderTextColor={Colors[colorScheme].icon}
+              value={description}
+              onChangeText={(text) => {
+                setDescription(text);
+                if (text.length > 0) {
+                  // 延迟收起，让用户看到输入的内容
+                  setTimeout(() => setIsDescriptionExpanded(false), 1000);
+                }
+              }}
+              multiline
+              autoFocus
+            />
+          )}
+          
+          <LocationPicker onLocationSelect={setLocation} />
+          
+          {location && (
+            <ThemedText style={styles.locationText}>
+              Selected Location: {location.name}
+            </ThemedText>
+          )}
+
+          <View style={styles.spacer} />
+        </ThemedView>
+      </ScrollView>
+
+      {/* Submit Button */}
+      <TouchableOpacity 
+        style={[
+          styles.submitButton,
+          { 
+            backgroundColor: Colors[colorScheme].tint,
+            opacity: isUploading ? 0.7 : 1
+          }
+        ]}
+        onPress={handleSubmit}
+        disabled={isUploading}
+      >
+        <ThemedText style={styles.submitButtonText}>
+          {isUploading ? 'Uploading...' : 'Submit'}
+        </ThemedText>
       </TouchableOpacity>
-      
-      <ThemedView style={styles.formContainer}>
-        <TextInput
-          style={[styles.input, { color: Colors[colorScheme].text }]}
-          placeholder="Title"
-          placeholderTextColor={Colors[colorScheme].icon}
-          value={title}
-          onChangeText={setTitle}
-        />
-        
-        <TextInput
-          style={[styles.input, styles.descriptionInput, { color: Colors[colorScheme].text }]}
-          placeholder="Description (optional)"
-          placeholderTextColor={Colors[colorScheme].icon}
-          value={description}
-          onChangeText={setDescription}
-          multiline
-        />
-        
-        <LocationPicker onLocationSelect={setLocation} />
-        
-        {location && (
-          <ThemedText style={styles.locationText}>
-            Selected Location: {location.name}
-          </ThemedText>
-        )}
-        
-        <TouchableOpacity 
-          style={[
-            styles.submitButton, 
-            { backgroundColor: Colors[colorScheme].tint },
-            isUploading && styles.disabledButton
-          ]} 
-          onPress={handleSubmit}
-          disabled={isUploading}
-        >
-          <ThemedText style={styles.submitButtonText}>
-            {isUploading ? 'Uploading...' : 'Upload'}
-          </ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
+
+      {/* Firework Animation */}
+      {showFirework && (
+        <View style={styles.fireworkContainer}>
+          <LottieView
+            ref={fireworkAnim}
+            source={require('@/assets/animations/firework.json')}
+            autoPlay={false}
+            loop={false}
+            style={styles.firework}
+          />
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -175,17 +236,24 @@ export default function UploadScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     padding: 16,
     paddingTop: 60,
+    paddingBottom: 100, // 为按钮留出空间
   },
   title: {
     marginBottom: 20,
   },
   imageContainer: {
-    height: 200,
+    height: 150, // 减小图片容器高度
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 20,
+    backgroundColor: '#f0f0f0',
   },
   previewImage: {
     width: '100%',
@@ -196,7 +264,6 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
   },
   formContainer: {
     gap: 16,
@@ -208,27 +275,58 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
   },
+  descriptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+  },
+  descriptionButtonText: {
+    fontSize: 16,
+  },
   descriptionInput: {
     height: 100,
     textAlignVertical: 'top',
-  },
-  submitButton: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  disabledButton: {
-    opacity: 0.7,
-  },
-  submitButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
   },
   locationText: {
     marginTop: 8,
     fontSize: 14,
     color: '#666',
+  },
+  spacer: {
+    height: 20,
+  },
+  submitButton: {
+    position: 'absolute',
+    bottom: 30,
+    left: 20,
+    right: 20,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  submitButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  fireworkContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  firework: {
+    width: '100%',
+    height: '100%',
   },
 }); 
