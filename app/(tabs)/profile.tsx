@@ -84,11 +84,7 @@ export default function ProfileScreen() {
         <Image 
           source={{ 
             uri: profile?.avatar_url || DEFAULT_AVATAR,
-            cache: 'force-cache',
-            headers: {
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            }
+            cache: 'default',
           }} 
           style={styles.avatar}
           onError={(error) => {
@@ -100,23 +96,15 @@ export default function ProfileScreen() {
             
             // 如果是自定义头像加载失败，尝试使用默认头像
             if (profile?.avatar_url && profile.avatar_url !== DEFAULT_AVATAR) {
-              console.log('Custom avatar failed to load, falling back to default avatar');
               setProfile({
                 ...profile,
                 avatar_url: DEFAULT_AVATAR
               });
-            } else if (profile?.avatar_url === DEFAULT_AVATAR) {
-              console.error('Default avatar also failed to load');
             }
           }}
           onLoad={() => {
-            console.log('Avatar loaded successfully:', {
-              url: profile?.avatar_url || DEFAULT_AVATAR,
-              isDefaultAvatar: profile?.avatar_url === DEFAULT_AVATAR
-            });
             setAvatarError(false);
           }}
-          fadeDuration={300}
         />
         
         <ThemedView style={styles.statsContainer}>

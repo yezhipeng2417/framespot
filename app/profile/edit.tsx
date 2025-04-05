@@ -75,9 +75,9 @@ export default function EditProfileScreen() {
 
       // Upload new avatar if changed
       if (avatarUri && avatarUri !== profile.avatar_url) {
-        const newAvatarUrl = await uploadImage(avatarUri, user.id, 'avatars');
-        if (newAvatarUrl) {
-          avatar_url = newAvatarUrl;
+        const uploadResult = await uploadImage(avatarUri, user.id, 'avatars', false);
+        if (uploadResult) {
+          avatar_url = uploadResult.originalUrl;
         }
       }
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, TouchableOpacity, Image, Platform, TextInput } from 'react-native';
+import { StyleSheet, TouchableOpacity, Image, Platform, TextInput, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { ThemedView } from './ThemedView';
@@ -7,6 +7,7 @@ import { ThemedText } from './ThemedText';
 import { IconSymbol } from './ui/IconSymbol';
 import { updateUserProfile, uploadImage } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { signOut } from '@/lib/auth';
 
 // 默认头像 URL - 使用 Gravatar 的默认头像
 const DEFAULT_AVATAR = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
@@ -60,13 +61,11 @@ export function SetupProfile() {
       console.log('Starting profile update...');
       let avatar_url = user.avatarUrl;
 
-      // Upload new avatar if selected
-      if (avatarUri) {
-        console.log('Uploading new avatar...');
-        const newAvatarUrl = await uploadImage(avatarUri, user.id, 'avatars');
-        if (newAvatarUrl) {
-          avatar_url = newAvatarUrl;
-          console.log('Avatar uploaded successfully:', newAvatarUrl);
+      // Upload new avatar if changed
+      if (avatarUri && avatarUri !== user.avatarUrl) {
+        const uploadResult = await uploadImage(avatarUri, user.id, 'avatars', false);
+        if (uploadResult) {
+          avatar_url = uploadResult.originalUrl;
         }
       }
 
@@ -112,6 +111,16 @@ export function SetupProfile() {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace('/');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
     }
   };
 
@@ -193,6 +202,14 @@ export function SetupProfile() {
             {isLoading ? 'Saving...' : 'Continue'}
           </ThemedText>
         </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.signOutButton}
+          onPress={handleSignOut}
+        >
+          <IconSymbol name="arrow.right.square" size={20} color="#FF3B30" />
+          <ThemedText style={styles.signOutText}>Sign Out</ThemedText>
+        </TouchableOpacity>
       </ThemedView>
     </ThemedView>
   );
@@ -260,12 +277,26 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    marginTop: 16,
   },
   submitButtonDisabled: {
     opacity: 0.5,
   },
   submitButtonText: {
     color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    marginTop: 16,
+  },
+  signOutText: {
+    color: '#FF3B30',
+    marginLeft: 8,
     fontSize: 16,
     fontWeight: '600',
   },

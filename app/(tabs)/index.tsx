@@ -1,17 +1,22 @@
-import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View } from 'react-native';
-import React, { useState, useRef, useEffect } from 'react';
-import MapView, { Marker } from 'react-native-maps';
+import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View, Linking, Alert } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import * as FileSystem from 'expo-file-system';
+import * as Location from 'expo-location';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { PhotoMarker } from '@/components/PhotoMarker';
-import { dummyPhotos } from '@/constants/DummyData';
-import { Photo } from '@/types/types';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { supabase } from '@/lib/supabase';
+import { Photo } from '@/lib/supabase';
+
+// 图片缓存目录
+const CACHE_DIR = `${FileSystem.cacheDirectory}markers/`;
 
 export default function MapScreen() {
   const router = useRouter();
@@ -22,6 +27,14 @@ export default function MapScreen() {
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | null>(null);
+  const [showReturnButton, setShowReturnButton] = useState(false);
+  const [currentRegion, setCurrentRegion] = useState<Region | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // ScrollView ref for controlling the image carousel
   const scrollViewRef = useRef<ScrollView>(null);
@@ -31,7 +44,185 @@ export default function MapScreen() {
   const exploreAnimation = useRef(new Animated.Value(0)).current;
   const profileAnimation = useRef(new Animated.Value(0)).current;
   const detailAnimation = useRef(new Animated.Value(0)).current;
-  
+  const returnButtonAnimation = useRef(new Animated.Value(0)).current;
+
+  const mapRef = useRef<MapView>(null);
+
+  // 检查用户是否偏离当前位置
+  const checkLocationDeviation = useCallback((region: Region) => {
+    if (!userLocation) return;
+
+    const distance = calculateDistance(
+      region.latitude,
+      region.longitude,
+      userLocation.coords.latitude,
+      userLocation.coords.longitude
+    );
+
+    // 如果距离超过 10 公里，显示返回按钮
+    if (distance > 10) {
+      setShowReturnButton(true);
+      Animated.timing(returnButtonAnimation, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      setShowReturnButton(false);
+      Animated.timing(returnButtonAnimation, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [userLocation]);
+
+  // 预加载图片
+  const preloadImages = useCallback(async (photos: Photo[]) => {
+    try {
+      // 确保缓存目录存在
+      await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+
+      // 预加载所有图片
+      const preloadPromises = photos.map(async (photo) => {
+        const imageUrl = photo.thumbnail_url || photo.image_urls[0];
+        if (!imageUrl) return;
+
+        const cacheKey = `marker-${photo.id}`;
+        const cachePath = `${CACHE_DIR}${cacheKey}`;
+
+        // 检查缓存是否存在
+        const cacheInfo = await FileSystem.getInfoAsync(cachePath);
+        if (cacheInfo.exists) return;
+
+        // 下载并缓存图片
+        try {
+          await FileSystem.downloadAsync(imageUrl, cachePath);
+        } catch (error) {
+          console.error('Error preloading image:', error);
+        }
+      });
+
+      await Promise.all(preloadPromises);
+    } catch (error) {
+      console.error('Error in preloadImages:', error);
+    }
+  }, []);
+
+  // 获取照片数据
+  const fetchPhotos = async (region?: Region, isInitialLoad: boolean = false) => {
+    if (isFetching && !isInitialLoad) return;
+    
+    try {
+      setIsFetching(true);
+      setIsLoading(true);
+      
+      // 构建查询条件
+      let query = supabase
+        .from('photos')
+        .select(`
+          *,
+          profiles:user_id (
+            username,
+            avatar_url
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      // 如果提供了区域信息，添加地理范围过滤
+      if (region) {
+        const { latitude, longitude, latitudeDelta, longitudeDelta } = region;
+        const latMin = latitude - latitudeDelta / 2;
+        const latMax = latitude + latitudeDelta / 2;
+        const lonMin = longitude - longitudeDelta / 2;
+        const lonMax = longitude + longitudeDelta / 2;
+
+        query = query
+          .gte('location->latitude', latMin)
+          .lte('location->latitude', latMax)
+          .gte('location->longitude', lonMin)
+          .lte('location->longitude', lonMax);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching photos:', error);
+        return;
+      }
+
+      // 使用函数式更新确保状态更新的原子性
+      setPhotos(prevPhotos => {
+        const newPhotos = data || [];
+        // 如果新数据与现有数据相同，则不更新
+        if (JSON.stringify(prevPhotos) === JSON.stringify(newPhotos)) {
+          return prevPhotos;
+        }
+        return newPhotos;
+      });
+      
+      // 预加载图片
+      if (data) {
+        preloadImages(data).catch(error => {
+          console.error('Error preloading images:', error);
+        });
+      }
+    } catch (error) {
+      console.error('Error in fetchPhotos:', error);
+    } finally {
+      setIsLoading(false);
+      setIsFetching(false);
+    }
+  };
+
+  // 处理地图区域变化
+  const handleRegionChange = useCallback((region: Region) => {
+    // 清除之前的定时器
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+
+    setCurrentRegion(region);
+    checkLocationDeviation(region);
+    
+    // 使用防抖，延迟执行获取照片
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchPhotos(region);
+    }, 1000); // 增加延迟时间到 1 秒
+  }, [checkLocationDeviation]);
+
+  // 组件卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // 组件加载时检查位置权限
+  useEffect(() => {
+    checkLocationPermission();
+  }, []);
+
+  // 初始加载照片
+  useEffect(() => {
+    if (currentRegion && !isFetching) {
+      fetchPhotos(currentRegion);
+    }
+  }, [currentRegion]);
+
+  // 清理函数
+  useEffect(() => {
+    return () => {
+      // 清理所有状态
+      setPhotos([]);
+      setCurrentRegion(null);
+      setIsFetching(false);
+      setIsLoading(false);
+    };
+  }, []);
+
   // Toggle menu
   const toggleMenu = () => {
     setMenuOpen(!menuOpen);
@@ -42,6 +233,16 @@ export default function MapScreen() {
     setSelectedPhoto(photo);
     setDetailVisible(true);
     setCurrentImageIndex(0);
+    
+    // Zoom in to the marker location
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: photo.location.latitude,
+        longitude: photo.location.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 500); // 500ms 动画时间
+    }
   };
 
   // Close detail view
@@ -137,7 +338,7 @@ export default function MapScreen() {
   useEffect(() => {
     if (selectedPhoto) {
       // Preload all images in the carousel
-      selectedPhoto.images.forEach(imageUrl => {
+      selectedPhoto.image_urls.forEach(imageUrl => {
         Image.prefetch(imageUrl)
           .catch(err => console.log('Error preloading image:', err));
       });
@@ -160,19 +361,131 @@ export default function MapScreen() {
     }
   };
 
+  // 计算两点之间的距离（公里）
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // 地球半径（公里）
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const toRad = (value: number) => {
+    return value * Math.PI / 180;
+  };
+
+  // 返回到用户位置
+  const returnToUserLocation = () => {
+    if (userLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude,
+        latitudeDelta: 0.01, // 更精确的缩放级别
+        longitudeDelta: 0.01,
+      }, 500);
+    }
+  };
+
+  // 请求位置权限
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocationPermission(status);
+      
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserLocation(location);
+        
+        // 移动到用户位置
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 500);
+        }
+      } else {
+        Alert.alert(
+          'Location Permission Denied',
+          'We need your location permission to show nearby content. You can change this in your settings.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Error', 'Failed to get your location');
+    }
+  };
+
+  // 检查位置权限
+  const checkLocationPermission = async () => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      setLocationPermission(status);
+      
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserLocation(location);
+        
+        // 设置当前区域并加载附近的图片
+        const region = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        };
+        setCurrentRegion(region);
+        
+        // 立即加载照片，不等待防抖
+        fetchPhotos(region, true);
+        
+        // 移动到用户位置
+        if (mapRef.current) {
+          mapRef.current.animateToRegion(region, 500);
+        }
+      } else {
+        requestLocationPermission();
+      }
+    } catch (error) {
+      console.error('Error checking location permission:', error);
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <StatusBar style="dark" />
       <MapView
+        ref={mapRef}
         style={styles.map}
         initialRegion={{
-          latitude: 37.78825,
-          longitude: -122.4324,
-          latitudeDelta: 0.0922,
-          longitudeDelta: 0.0421,
+          latitude: userLocation?.coords.latitude ?? 37.78825,
+          longitude: userLocation?.coords.longitude ?? -122.4324,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1,
         }}
+        onRegionChange={handleRegionChange}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
       >
-        {dummyPhotos.map((photo: Photo) => (
+        {photos.map((photo) => (
           <Marker
             key={photo.id}
             coordinate={{
@@ -297,22 +610,23 @@ export default function MapScreen() {
               onMomentumScrollEnd={handleScroll}
               style={styles.imageCarousel}
             >
-              {selectedPhoto.images.map((imageUrl, index) => (
+              {selectedPhoto.image_urls.map((imageUrl, index) => (
                 <View key={index} style={[styles.carouselImageContainer, { width: screenWidth }]}>
                   <Image 
                     source={{ uri: imageUrl }}
                     style={styles.mainImage}
                     resizeMode="cover"
                     onError={(e) => console.log('error:', e.nativeEvent.error)}
+                    fadeDuration={300}
                   />
                 </View>
               ))}
             </ScrollView>
             
             {/* Only show carousel dots if we have multiple images */}
-            {selectedPhoto.images.length > 1 && (
+            {selectedPhoto.image_urls.length > 1 && (
               <View style={styles.carouselDots}>
-                {selectedPhoto.images.map((_, index) => (
+                {selectedPhoto.image_urls.map((_, index) => (
                   <TouchableOpacity
                     key={index}
                     onPress={() => navigateToImage(index)}
@@ -342,37 +656,136 @@ export default function MapScreen() {
             {/* User info */}
             <ThemedView style={styles.userRow}>
               <Image 
-                source={{ uri: selectedPhoto.user.avatar }} 
+                source={{ uri: selectedPhoto.profiles?.avatar_url || 'https://via.placeholder.com/32' }} 
                 style={styles.userAvatar}
               />
-              <ThemedText style={styles.userName}>{selectedPhoto.user.name}</ThemedText>
+              <ThemedText style={styles.userName}>{selectedPhoto.profiles?.username || 'Unknown User'}</ThemedText>
             </ThemedView>
             
             {/* Description */}
             <ThemedText style={styles.description}>{selectedPhoto.description}</ThemedText>
             
+            {/* Photo Metadata */}
+            {selectedPhoto.metadata && (
+              <ThemedView style={styles.metadataContainer}>
+                <ThemedText type="subtitle" style={styles.metadataTitle}>Photo Details</ThemedText>
+                
+                <View style={styles.metadataGrid}>
+                  {selectedPhoto.metadata.camera && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.camera}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.lens && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera.aperture" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.lens}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.focalLength && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera.viewfinder" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.focalLength}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.aperture && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="camera.aperture" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.aperture}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.shutterSpeed && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="timer" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.shutterSpeed}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.iso && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="light.max" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.iso}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.resolution && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="photo" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.resolution}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.whiteBalance && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="lightbulb" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>WB: {selectedPhoto.metadata.whiteBalance}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.brightness && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="sun.max" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>Brightness: {selectedPhoto.metadata.brightness}</ThemedText>
+                    </View>
+                  )}
+                  
+                  {selectedPhoto.metadata.dateTime && (
+                    <View style={styles.metadataItem}>
+                      <IconSymbol name="calendar" size={16} color="#555" />
+                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.dateTime}</ThemedText>
+                    </View>
+                  )}
+                </View>
+              </ThemedView>
+            )}
+            
             {/* Stats */}
             <ThemedView style={styles.statsRow}>
-              <ThemedView style={styles.statItem}>
-                <IconSymbol name="heart.fill" size={16} color="#555" />
-                <ThemedText style={styles.statText}>{selectedPhoto.likes}</ThemedText>
-              </ThemedView>
-              
-              <ThemedView style={styles.statItem}>
-                <IconSymbol name="chat.bubble.fill" size={16} color="#555" />
-                <ThemedText style={styles.statText}>{selectedPhoto.comments}</ThemedText>
-              </ThemedView>
-              
               <ThemedText style={styles.dateText}>
-                {new Date(selectedPhoto.createdAt).toLocaleDateString()}
+                {new Date(selectedPhoto.created_at).toLocaleDateString()}
               </ThemedText>
             </ThemedView>
             
             {/* Directions button */}
-            <TouchableOpacity style={styles.directionsButton}>
+            <TouchableOpacity 
+              style={styles.directionsButton}
+              onPress={() => {
+                const { latitude, longitude } = selectedPhoto.location;
+                const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+                Linking.openURL(url);
+              }}
+            >
               <ThemedText style={styles.directionsText}>Get Directions</ThemedText>
             </TouchableOpacity>
           </ScrollView>
+        </Animated.View>
+      )}
+
+      {/* Return to Location Button */}
+      {showReturnButton && (
+        <Animated.View 
+          style={[
+            styles.returnButtonContainer,
+            {
+              opacity: returnButtonAnimation,
+              transform: [{ translateY: returnButtonAnimation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [100, 0]
+              })}]
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            style={styles.returnButton}
+            onPress={returnToUserLocation}
+          >
+            <IconSymbol name="location.fill" size={24} color="#fff" />
+          </TouchableOpacity>
         </Animated.View>
       )}
     </ThemedView>
@@ -692,5 +1105,48 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#FF3B30',
+  },
+  returnButtonContainer: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    alignItems: 'center',
+  },
+  returnButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  metadataContainer: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    marginVertical: 16,
+  },
+  metadataTitle: {
+    marginBottom: 12,
+  },
+  metadataGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: '45%',
+  },
+  metadataText: {
+    fontSize: 14,
   },
 });

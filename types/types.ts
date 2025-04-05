@@ -1,30 +1,28 @@
 export interface Photo {
   id: string;
   title: string;
-  description: string;
-  images: string[];
-  thumbnailUrl: string;
+  description: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
   location: Location;
-  user: User;
-  likes: number;
-  comments: number;
-  createdAt: string;
+  created_at: string;
+  updated_at: string;
+  profiles?: {
+    username: string;
+    avatar_url: string | null;
+  };
 }
 
 export interface Location {
   latitude: number;
   longitude: number;
   name: string;
-  address: string;
 }
 
 export interface User {
   id: string;
-  name: string;
   username: string;
-  avatar: string;
-  bio: string;
-  photosCount: number;
-  followersCount: number;
-  followingCount: number;
+  full_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
 }
