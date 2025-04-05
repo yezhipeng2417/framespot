@@ -97,6 +97,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 8,
+    alignItems: 'center',
   },
   tile: {
     margin: 8,
