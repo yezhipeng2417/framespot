@@ -1,13 +1,10 @@
 export interface Photo {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   image_urls: string[];
   thumbnail_url: string | null;
   location: Location;
-  user: User;
-  likes: number;
-  comments: number;
   created_at: string;
   updated_at: string;
   profiles?: {

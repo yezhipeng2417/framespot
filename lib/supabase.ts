@@ -217,8 +217,14 @@ export async function uploadImage(
         // 使用 ImageManipulator 创建缩略图
         const manipResult = await ImageManipulator.manipulateAsync(
           filePath,
-          [{ resize: { width: 200 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+          [
+            { resize: { width: 50 } }, // 进一步减小缩略图尺寸
+          ],
+          {
+            compress: 0.3, // 进一步降低压缩质量
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: false,
+          }
         );
 
         // 读取缩略图内容

@@ -1,9 +1,10 @@
 import { StyleSheet, TouchableOpacity, Animated, Image, Dimensions, ScrollView, View, Linking } from 'react-native';
-import React, { useState, useRef, useEffect } from 'react';
-import MapView, { Marker } from 'react-native-maps';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import * as FileSystem from 'expo-file-system';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -12,6 +13,9 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { supabase } from '@/lib/supabase';
 import { Photo } from '@/lib/supabase';
+
+// 图片缓存目录
+const CACHE_DIR = `${FileSystem.cacheDirectory}markers/`;
 
 export default function MapScreen() {
   const router = useRouter();
@@ -34,9 +38,42 @@ export default function MapScreen() {
   const profileAnimation = useRef(new Animated.Value(0)).current;
   const detailAnimation = useRef(new Animated.Value(0)).current;
 
-  // Fetch photos from database
+  // 预加载图片
+  const preloadImages = useCallback(async (photos: Photo[]) => {
+    try {
+      // 确保缓存目录存在
+      await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+
+      // 预加载所有图片
+      const preloadPromises = photos.map(async (photo) => {
+        const imageUrl = photo.thumbnail_url || photo.image_urls[0];
+        if (!imageUrl) return;
+
+        const cacheKey = `marker-${photo.id}`;
+        const cachePath = `${CACHE_DIR}${cacheKey}`;
+
+        // 检查缓存是否存在
+        const cacheInfo = await FileSystem.getInfoAsync(cachePath);
+        if (cacheInfo.exists) return;
+
+        // 下载并缓存图片
+        try {
+          await FileSystem.downloadAsync(imageUrl, cachePath);
+        } catch (error) {
+          console.error('Error preloading image:', error);
+        }
+      });
+
+      await Promise.all(preloadPromises);
+    } catch (error) {
+      console.error('Error in preloadImages:', error);
+    }
+  }, []);
+
+  // 获取照片数据
   const fetchPhotos = async () => {
     try {
+      setIsLoading(true);
       const { data, error } = await supabase
         .from('photos')
         .select(`
@@ -53,6 +90,11 @@ export default function MapScreen() {
       }
 
       setPhotos(data || []);
+      
+      // 预加载图片
+      if (data) {
+        preloadImages(data);
+      }
     } catch (error) {
       console.error('Error fetching photos:', error);
     } finally {
@@ -207,6 +249,12 @@ export default function MapScreen() {
     }
   };
 
+  // 处理地图区域变化
+  const handleRegionChange = useCallback((region: Region) => {
+    // 可以在这里实现虚拟化加载
+    // 只加载当前可见区域内的标记
+  }, []);
+
   return (
     <ThemedView style={styles.container}>
       <StatusBar style="dark" />
@@ -218,6 +266,7 @@ export default function MapScreen() {
           latitudeDelta: 0.0922,
           longitudeDelta: 0.0421,
         }}
+        onRegionChange={handleRegionChange}
       >
         {photos.map((photo) => (
           <Marker
@@ -351,6 +400,7 @@ export default function MapScreen() {
                     style={styles.mainImage}
                     resizeMode="cover"
                     onError={(e) => console.log('error:', e.nativeEvent.error)}
+                    fadeDuration={300}
                   />
                 </View>
               ))}
