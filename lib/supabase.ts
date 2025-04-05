@@ -154,11 +154,27 @@ export async function uploadImage(
     const ext = filePath.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
 
+    console.log('Preparing to fetch file from:', filePath);
     // 获取文件内容
     const response = await fetch(filePath);
-    const blob = await response.blob();
+    console.log('File fetch response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
 
-    console.log('Uploading file:', fileName);
+    const blob = await response.blob();
+    console.log('Blob created:', {
+      size: blob.size,
+      type: blob.type
+    });
+
+    console.log('Uploading file to Supabase:', {
+      bucket,
+      fileName,
+      contentType: `image/${ext}`
+    });
+    
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(fileName, blob, {
@@ -177,7 +193,21 @@ export async function uploadImage(
       .from(bucket)
       .getPublicUrl(fileName);
 
-    console.log('Public URL:', publicUrl);
+    console.log('Generated public URL:', publicUrl);
+    
+    // 验证上传的文件是否可访问
+    try {
+      const checkResponse = await fetch(publicUrl);
+      console.log('URL check response:', {
+        status: checkResponse.status,
+        statusText: checkResponse.statusText,
+        contentLength: checkResponse.headers.get('content-length'),
+        contentType: checkResponse.headers.get('content-type')
+      });
+    } catch (checkError) {
+      console.error('Error checking uploaded file:', checkError);
+    }
+
     return publicUrl;
   } catch (error) {
     console.error('Error in uploadImage:', error);

@@ -10,6 +10,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile, updateUserProfile, uploadImage } from '@/lib/supabase';
 import type { UserProfile } from '@/lib/supabase';
 
+// 默认头像 URL - 使用 Gravatar 的默认头像
+const DEFAULT_AVATAR = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+
 export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -120,13 +123,34 @@ export default function EditProfileScreen() {
 
       <ScrollView style={styles.content}>
         <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.avatar} />
-          ) : (
-            <ThemedView style={styles.avatarPlaceholder}>
-              <IconSymbol name="person.fill" size={40} color="#999" />
-            </ThemedView>
-          )}
+          <Image 
+            source={{ 
+              uri: avatarUri || profile?.avatar_url || DEFAULT_AVATAR,
+              cache: 'force-cache',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }} 
+            style={styles.avatar}
+            onError={(error) => {
+              console.error('Avatar load error:', {
+                error: error.nativeEvent,
+                attemptedUrl: avatarUri || profile?.avatar_url || DEFAULT_AVATAR
+              });
+              // 如果是自定义头像加载失败，尝试使用个人资料头像或默认头像
+              if (avatarUri && avatarUri !== profile?.avatar_url) {
+                setAvatarUri(profile?.avatar_url || DEFAULT_AVATAR);
+              }
+            }}
+            onLoad={() => {
+              console.log('Avatar loaded successfully:', {
+                url: avatarUri || profile?.avatar_url || DEFAULT_AVATAR,
+                isDefaultAvatar: (avatarUri || profile?.avatar_url) === DEFAULT_AVATAR
+              });
+            }}
+            fadeDuration={300}
+          />
           <ThemedText style={styles.changePhotoText}>Change Photo</ThemedText>
         </TouchableOpacity>
 

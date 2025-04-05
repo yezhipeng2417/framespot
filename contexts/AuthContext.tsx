@@ -31,27 +31,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const available = await isAvailable();
         setIsAppleAuthAvailable(available);
 
-        if (available) {
-          console.log('Checking user login status...');
-          const currentUser = await getCurrentUser();
-          console.log('Current user status:', currentUser ? 'Logged in' : 'Not logged in');
-          if (currentUser) {
-            // 获取完整的用户资料
-            const profile = await getUserProfile(currentUser.id);
-            if (profile) {
-              setUser({
-                ...currentUser,
-                fullName: profile.full_name,
-                avatarUrl: profile.avatar_url,
-              });
-            } else {
-              setUser(currentUser);
-            }
-          } else {
-            setUser(null);
-          }
+        console.log('Checking user login status...');
+        const currentUser = await getCurrentUser();
+        console.log('Current user status:', currentUser ? 'Logged in' : 'Not logged in');
+        
+        if (currentUser) {
+          setUser(currentUser);
         } else {
-          console.log('Apple Sign In is not available');
           setUser(null);
         }
       } catch (error) {
@@ -71,17 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (session) {
         const currentUser = await getCurrentUser();
         if (currentUser) {
-          // 获取完整的用户资料
-          const profile = await getUserProfile(currentUser.id);
-          if (profile) {
-            setUser({
-              ...currentUser,
-              fullName: profile.full_name,
-              avatarUrl: profile.avatar_url,
-            });
-          } else {
-            setUser(currentUser);
-          }
+          setUser(currentUser);
         }
       }
     });

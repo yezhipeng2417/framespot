@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Image, FlatList, Dimensions, TouchableOpacity, RefreshControl } from 'react-native';
+import { StyleSheet, Image, FlatList, Dimensions, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -54,9 +54,28 @@ export default function ProfileScreen() {
     loadProfileData();
   };
 
-  // If profile is not set up, show the setup screen
-  if (!profile?.username) {
-    return <SetupProfile />;
+  // 显示加载状态
+  if (isLoading) {
+    return (
+      <ThemedView style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </ThemedView>
+    );
+  }
+
+  // 添加对 profile 为 null 的检查
+  if (!profile) {
+    return (
+      <ThemedView style={[styles.container, styles.loadingContainer]}>
+        <ThemedText>Failed to load profile</ThemedText>
+        <TouchableOpacity 
+          style={[styles.editButton, { marginTop: 16 }]}
+          onPress={loadProfileData}
+        >
+          <ThemedText style={styles.editButtonText}>Retry</ThemedText>
+        </TouchableOpacity>
+      </ThemedView>
+    );
   }
   
   return (
@@ -64,16 +83,37 @@ export default function ProfileScreen() {
       <ThemedView style={styles.header}>
         <Image 
           source={{ 
-            uri: profile.avatar_url || DEFAULT_AVATAR,
-            cache: 'reload'
+            uri: profile?.avatar_url || DEFAULT_AVATAR,
+            cache: 'force-cache',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
           }} 
           style={styles.avatar}
           onError={(error) => {
-            console.error('Avatar load error:', error.nativeEvent);
+            console.error('Avatar load error:', {
+              error: error.nativeEvent,
+              attemptedUrl: profile?.avatar_url || DEFAULT_AVATAR
+            });
             setAvatarError(true);
+            
+            // 如果是自定义头像加载失败，尝试使用默认头像
+            if (profile?.avatar_url && profile.avatar_url !== DEFAULT_AVATAR) {
+              console.log('Custom avatar failed to load, falling back to default avatar');
+              setProfile({
+                ...profile,
+                avatar_url: DEFAULT_AVATAR
+              });
+            } else if (profile?.avatar_url === DEFAULT_AVATAR) {
+              console.error('Default avatar also failed to load');
+            }
           }}
           onLoad={() => {
-            console.log('Avatar loaded successfully:', profile.avatar_url);
+            console.log('Avatar loaded successfully:', {
+              url: profile?.avatar_url || DEFAULT_AVATAR,
+              isDefaultAvatar: profile?.avatar_url === DEFAULT_AVATAR
+            });
             setAvatarError(false);
           }}
           fadeDuration={300}
@@ -87,9 +127,9 @@ export default function ProfileScreen() {
         </ThemedView>
         
         <ThemedView style={styles.bioContainer}>
-          <ThemedText type="defaultSemiBold">{profile.full_name || profile.username}</ThemedText>
-          <ThemedText>@{profile.username}</ThemedText>
-          {profile.bio && (
+          <ThemedText type="defaultSemiBold">{profile?.full_name || profile?.username}</ThemedText>
+          <ThemedText>@{profile?.username}</ThemedText>
+          {profile?.bio && (
             <ThemedText style={styles.bio}>{profile.bio}</ThemedText>
           )}
         </ThemedView>
@@ -200,5 +240,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: '#999',
     fontSize: 16,
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 }); 

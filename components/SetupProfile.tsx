@@ -121,11 +121,23 @@ export function SetupProfile() {
       
       <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
         <Image 
-          source={{ uri: avatarUri || DEFAULT_AVATAR }}
+          source={{ 
+            uri: avatarUri || DEFAULT_AVATAR,
+            cache: 'force-cache',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }}
           style={styles.avatar}
           onError={(error) => {
             console.error('Avatar load error:', error.nativeEvent);
             setAvatarError(true);
+            // 如果加载失败，尝试使用默认头像
+            if (avatarUri) {
+              console.log('Falling back to default avatar');
+              setAvatarUri(DEFAULT_AVATAR);
+            }
           }}
           onLoad={() => {
             console.log('Avatar loaded successfully:', avatarUri);
