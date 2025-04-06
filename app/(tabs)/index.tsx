@@ -22,6 +22,28 @@ import { ReturnToLocationButton } from '@/components/ReturnToLocationButton';
 // 图片缓存目录
 const CACHE_DIR = `${FileSystem.cacheDirectory}markers/`;
 
+const { width } = Dimensions.get('window');
+const numColumns = 3;
+const tileSize = width / numColumns - 4;
+
+// 计算两个地理位置之间的距离（单位：公里）
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // 地球半径（公里）
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+// 将角度转换为弧度
+const toRad = (value: number): number => {
+  return value * Math.PI / 180;
+};
+
 export default function MapScreen() {
   const router = useRouter();
   const { handleSignOut } = useAuth();
@@ -30,7 +52,6 @@ export default function MapScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
@@ -349,39 +370,6 @@ export default function MapScreen() {
     }
   }, [selectedPhoto]);
 
-  // 处理个人资料按钮点击
-  const handleProfilePress = () => {
-    setMenuOpen(false);
-    setProfileMenuVisible(true);
-  };
-
-  // 处理登出
-  const onSignOutPress = async () => {
-    try {
-      setProfileMenuVisible(false);
-      await handleSignOut();
-    } catch (error) {
-      console.error('Sign out error:', error);
-    }
-  };
-
-  // 计算两点之间的距离（公里）
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // 地球半径（公里）
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
-  const toRad = (value: number) => {
-    return value * Math.PI / 180;
-  };
-
   // 返回到用户位置
   const returnToUserLocation = () => {
     if (userLocation && mapRef.current) {
@@ -506,40 +494,7 @@ export default function MapScreen() {
       <MenuButtons
         menuOpen={menuOpen}
         onToggleMenu={toggleMenu}
-        onProfilePress={handleProfilePress}
       />
-      
-      {/* Profile Menu */}
-      {profileMenuVisible && (
-        <ThemedView style={styles.profileMenu}>
-          <TouchableOpacity 
-            style={styles.profileMenuItem}
-            onPress={() => {
-              setProfileMenuVisible(false);
-              router.push('/profile');
-            }}
-          >
-            <IconSymbol name="person" size={20} color="#555" />
-            <ThemedText style={styles.profileMenuText}>Profile</ThemedText>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.profileMenuItem, styles.signOutMenuItem]}
-            onPress={onSignOutPress}
-          >
-            <IconSymbol name="arrow.right.square" size={20} color="#FF3B30" />
-            <ThemedText style={[styles.profileMenuText, styles.signOutText]}>Sign Out</ThemedText>
-          </TouchableOpacity>
-        </ThemedView>
-      )}
-
-      {/* 点击空白处关闭个人资料菜单 */}
-      {profileMenuVisible && (
-        <TouchableOpacity
-          style={styles.overlay}
-          onPress={() => setProfileMenuVisible(false)}
-        />
-      )}
       
       {/* Upload button (always visible) */}
       <TouchableOpacity 
@@ -849,37 +804,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'transparent',
-  },
-  profileMenu: {
-    position: 'absolute',
-    top: 110,
-    left: 20,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 1000,
-  },
-  profileMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-  },
-  profileMenuText: {
-    marginLeft: 12,
-    fontSize: 16,
-    color: '#333333',
-  },
-  signOutMenuItem: {
-    marginTop: 4,
-  },
-  signOutText: {
-    color: '#FF3B30',
   },
   returnButtonContainer: {
     position: 'absolute',

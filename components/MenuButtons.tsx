@@ -6,13 +6,11 @@ import { useRouter } from 'expo-router';
 interface MenuButtonsProps {
   menuOpen: boolean;
   onToggleMenu: () => void;
-  onProfilePress: () => void;
 }
 
 export const MenuButtons: React.FC<MenuButtonsProps> = ({
   menuOpen,
   onToggleMenu,
-  onProfilePress,
 }) => {
   const router = useRouter();
   const exploreAnimation = useRef(new Animated.Value(0)).current;
@@ -96,7 +94,10 @@ export const MenuButtons: React.FC<MenuButtonsProps> = ({
       ]}>
         <TouchableOpacity
           style={styles.fabButton}
-          onPress={onProfilePress}
+          onPress={() => {
+            onToggleMenu();
+            router.push('/profile');
+          }}
         >
           <IconSymbol name="person.crop.circle" size={22} color="#555" />
         </TouchableOpacity>
