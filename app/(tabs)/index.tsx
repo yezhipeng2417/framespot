@@ -14,9 +14,35 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { supabase } from '@/lib/supabase';
 import { Photo } from '@/lib/supabase';
+import { PhotoDetailView } from '@/components/PhotoDetailView';
+import { PhotoMetadata } from '@/components/PhotoMetadata';
+import { MenuButtons } from '@/components/MenuButtons';
+import { ReturnToLocationButton } from '@/components/ReturnToLocationButton';
 
 // 图片缓存目录
 const CACHE_DIR = `${FileSystem.cacheDirectory}markers/`;
+
+const { width } = Dimensions.get('window');
+const numColumns = 3;
+const tileSize = width / numColumns - 4;
+
+// 计算两个地理位置之间的距离（单位：公里）
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // 地球半径（公里）
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+// 将角度转换为弧度
+const toRad = (value: number): number => {
+  return value * Math.PI / 180;
+};
 
 export default function MapScreen() {
   const router = useRouter();
@@ -26,7 +52,6 @@ export default function MapScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
@@ -345,39 +370,6 @@ export default function MapScreen() {
     }
   }, [selectedPhoto]);
 
-  // 处理个人资料按钮点击
-  const handleProfilePress = () => {
-    setMenuOpen(false);
-    setProfileMenuVisible(true);
-  };
-
-  // 处理登出
-  const onSignOutPress = async () => {
-    try {
-      setProfileMenuVisible(false);
-      await handleSignOut();
-    } catch (error) {
-      console.error('Sign out error:', error);
-    }
-  };
-
-  // 计算两点之间的距离（公里）
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // 地球半径（公里）
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
-  const toRad = (value: number) => {
-    return value * Math.PI / 180;
-  };
-
   // 返回到用户位置
   const returnToUserLocation = () => {
     if (userLocation && mapRef.current) {
@@ -499,82 +491,10 @@ export default function MapScreen() {
         ))}
       </MapView>
       
-      {/* Menu button (three dots) */}
-      <TouchableOpacity 
-        style={[styles.fabMenu]} 
-        onPress={toggleMenu}
-      >
-        <IconSymbol name="ellipsis" size={22} color="#555" />
-      </TouchableOpacity>
-      
-      {/* Explore button (appears when menu is opened) */}
-      <Animated.View style={[
-        styles.fabMenuItem,
-        { 
-          transform: [{ translateY: exploreTranslateY }],
-          opacity: exploreAnimation,
-          left: 20,
-        }
-      ]}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => {
-            setMenuOpen(false);
-            router.push('/explore');
-          }}
-        >
-          <IconSymbol name="photo.on.rectangle" size={22} color="#555" />
-        </TouchableOpacity>
-      </Animated.View>
-      
-      {/* Profile button (appears when menu is opened) */}
-      <Animated.View style={[
-        styles.fabMenuItem,
-        { 
-          transform: [{ translateY: profileTranslateY }],
-          opacity: profileAnimation,
-          left: 20,
-        }
-      ]}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={handleProfilePress}
-        >
-          <IconSymbol name="person.crop.circle" size={22} color="#555" />
-        </TouchableOpacity>
-      </Animated.View>
-      
-      {/* Profile Menu */}
-      {profileMenuVisible && (
-        <ThemedView style={styles.profileMenu}>
-          <TouchableOpacity 
-            style={styles.profileMenuItem}
-            onPress={() => {
-              setProfileMenuVisible(false);
-              router.push('/profile');
-            }}
-          >
-            <IconSymbol name="person" size={20} color="#555" />
-            <ThemedText style={styles.profileMenuText}>Profile</ThemedText>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.profileMenuItem, styles.signOutMenuItem]}
-            onPress={onSignOutPress}
-          >
-            <IconSymbol name="arrow.right.square" size={20} color="#FF3B30" />
-            <ThemedText style={[styles.profileMenuText, styles.signOutText]}>Sign Out</ThemedText>
-          </TouchableOpacity>
-        </ThemedView>
-      )}
-
-      {/* 点击空白处关闭个人资料菜单 */}
-      {profileMenuVisible && (
-        <TouchableOpacity
-          style={styles.overlay}
-          onPress={() => setProfileMenuVisible(false)}
-        />
-      )}
+      <MenuButtons
+        menuOpen={menuOpen}
+        onToggleMenu={toggleMenu}
+      />
       
       {/* Upload button (always visible) */}
       <TouchableOpacity 
@@ -586,208 +506,18 @@ export default function MapScreen() {
       
       {/* Photo Detail View */}
       {selectedPhoto && (
-        <Animated.View 
-          style={[
-            styles.photoDetailContainer,
-            { transform: [{ translateY: detailTranslateY }] }
-          ]}
-        >
-          {/* Close button */}
-          <TouchableOpacity 
-            style={styles.closeButton}
-            onPress={closeDetail}
-          >
-            <IconSymbol name="xmark" size={20} color="#555" />
-          </TouchableOpacity>
-          
-          {/* Images container with horizontal scrolling */}
-          <ThemedView style={styles.imagesStack}>
-            <ScrollView
-              ref={scrollViewRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={handleScroll}
-              style={styles.imageCarousel}
-            >
-              {selectedPhoto.image_urls.map((imageUrl, index) => (
-                <View key={index} style={[styles.carouselImageContainer, { width: screenWidth }]}>
-                  <Image 
-                    source={{ uri: imageUrl }}
-                    style={styles.mainImage}
-                    resizeMode="cover"
-                    onError={(e) => console.log('error:', e.nativeEvent.error)}
-                    fadeDuration={300}
-                  />
-                </View>
-              ))}
-            </ScrollView>
-            
-            {/* Only show carousel dots if we have multiple images */}
-            {selectedPhoto.image_urls.length > 1 && (
-              <View style={styles.carouselDots}>
-                {selectedPhoto.image_urls.map((_, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    onPress={() => navigateToImage(index)}
-                  >
-                    <View 
-                      style={[
-                        styles.dot, 
-                        index === currentImageIndex && styles.activeDot
-                      ]} 
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </ThemedView>
-          
-          {/* Photo details */}
-          <ScrollView style={styles.detailsContainer}>
-            <ThemedText type="title">{selectedPhoto.title}</ThemedText>
-            
-            {/* Location info */}
-            <ThemedView style={styles.locationRow}>
-              <IconSymbol name="location.fill" size={16} color="#555" />
-              <ThemedText style={styles.locationText}>{selectedPhoto.location.name}</ThemedText>
-            </ThemedView>
-            
-            {/* User info */}
-            <ThemedView style={styles.userRow}>
-              <Image 
-                source={{ uri: selectedPhoto.profiles?.avatar_url || 'https://via.placeholder.com/32' }} 
-                style={styles.userAvatar}
-              />
-              <ThemedText style={styles.userName}>{selectedPhoto.profiles?.username || 'Unknown User'}</ThemedText>
-            </ThemedView>
-            
-            {/* Description */}
-            <ThemedText style={styles.description}>{selectedPhoto.description}</ThemedText>
-            
-            {/* Photo Metadata */}
-            {selectedPhoto.metadata && (
-              <ThemedView style={styles.metadataContainer}>
-                <ThemedText type="subtitle" style={styles.metadataTitle}>Photo Details</ThemedText>
-                
-                <View style={styles.metadataGrid}>
-                  {selectedPhoto.metadata.camera && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="camera" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.camera}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.lens && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="camera.aperture" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.lens}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.focalLength && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="camera.viewfinder" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.focalLength}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.aperture && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="camera.aperture" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.aperture}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.shutterSpeed && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="timer" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.shutterSpeed}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.iso && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="light.max" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.iso}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.resolution && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="photo" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.resolution}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.whiteBalance && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="lightbulb" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>WB: {selectedPhoto.metadata.whiteBalance}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.brightness && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="sun.max" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>Brightness: {selectedPhoto.metadata.brightness}</ThemedText>
-                    </View>
-                  )}
-                  
-                  {selectedPhoto.metadata.dateTime && (
-                    <View style={styles.metadataItem}>
-                      <IconSymbol name="calendar" size={16} color="#555" />
-                      <ThemedText style={styles.metadataText}>{selectedPhoto.metadata.dateTime}</ThemedText>
-                    </View>
-                  )}
-                </View>
-              </ThemedView>
-            )}
-            
-            {/* Stats */}
-            <ThemedView style={styles.statsRow}>
-              <ThemedText style={styles.dateText}>
-                {new Date(selectedPhoto.created_at).toLocaleDateString()}
-              </ThemedText>
-            </ThemedView>
-            
-            {/* Directions button */}
-            <TouchableOpacity 
-              style={styles.directionsButton}
-              onPress={() => {
-                const { latitude, longitude } = selectedPhoto.location;
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
-                Linking.openURL(url);
-              }}
-            >
-              <ThemedText style={styles.directionsText}>Get Directions</ThemedText>
-            </TouchableOpacity>
-          </ScrollView>
-        </Animated.View>
+        <PhotoDetailView
+          selectedPhoto={selectedPhoto}
+          detailVisible={detailVisible}
+          onClose={closeDetail}
+        />
       )}
 
-      {/* Return to Location Button */}
-      {showReturnButton && (
-        <Animated.View 
-          style={[
-            styles.returnButtonContainer,
-            {
-              opacity: returnButtonAnimation,
-              transform: [{ translateY: returnButtonAnimation.interpolate({
-                inputRange: [0, 1],
-                outputRange: [100, 0]
-              })}]
-            }
-          ]}
-        >
-          <TouchableOpacity 
-            style={styles.returnButton}
-            onPress={returnToUserLocation}
-          >
-            <IconSymbol name="location.fill" size={24} color="#fff" />
-          </TouchableOpacity>
-        </Animated.View>
-      )}
+      <ReturnToLocationButton
+        showReturnButton={showReturnButton}
+        returnButtonAnimation={returnButtonAnimation}
+        onPress={returnToUserLocation}
+      />
     </ThemedView>
   );
 }
@@ -1074,37 +804,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'transparent',
-  },
-  profileMenu: {
-    position: 'absolute',
-    top: 110,
-    left: 20,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 1000,
-  },
-  profileMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-  },
-  profileMenuText: {
-    marginLeft: 12,
-    fontSize: 16,
-    color: '#333333',
-  },
-  signOutMenuItem: {
-    marginTop: 4,
-  },
-  signOutText: {
-    color: '#FF3B30',
   },
   returnButtonContainer: {
     position: 'absolute',
