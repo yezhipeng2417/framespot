@@ -10,10 +10,10 @@ import { useFonts } from 'expo-font';
 import { Stack, Redirect } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { View, ActivityIndicator, Text } from 'react-native';
+import { View, ActivityIndicator, Text, Animated } from 'react-native';
 import Welcome from '@/components/Welcome';
 import { SetupProfile } from '@/components/SetupProfile';
 import { getUserProfile, type UserProfile } from '@/lib/supabase';
@@ -23,43 +23,62 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+type AppState = 'loading' | 'checking' | 'welcome' | 'setup' | 'main';
+
 function AppContent() {
   const { user, isLoading, isAppleAuthAvailable } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [checkingProfile, setCheckingProfile] = useState(true);
+  const [appState, setAppState] = useState<AppState>('loading');
+  const fadeAnim = useState(new Animated.Value(0))[0];
 
   // 检查用户资料
   useEffect(() => {
+    let mounted = true;
+
     async function checkProfile() {
-      console.log('Checking profile for user:', user?.id);
-      if (user) {
-        try {
-          const profileData = await getUserProfile(user.id);
-          console.log('Profile data:', profileData);
-          setProfile(profileData);
-        } catch (error) {
-          console.error('Error checking profile:', error);
-        } finally {
-          setCheckingProfile(false);
+      if (!user) {
+        if (mounted) {
+          setAppState('welcome');
         }
-      } else {
-        console.log('No user found, skipping profile check');
-        setCheckingProfile(false);
+        return;
+      }
+
+      setAppState('checking');
+
+      try {
+        const profileData = await getUserProfile(user.id);
+        if (mounted) {
+          setProfile(profileData);
+          setAppState(profileData?.username ? 'main' : 'setup');
+        }
+      } catch (error) {
+        console.error('Error checking profile:', error);
+        if (mounted) {
+          setAppState('setup');
+        }
       }
     }
+
     checkProfile();
+
+    return () => {
+      mounted = false;
+    };
   }, [user]);
 
-  console.log('Current state:', { 
-    user, 
-    isLoading, 
-    isAppleAuthAvailable, 
-    profile,
-    checkingProfile 
-  });
+  // 淡入动画
+  useEffect(() => {
+    if (appState !== 'loading') {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [appState]);
 
-  if (isLoading || checkingProfile) {
-    console.log('Loading or checking profile...');
+  // 等待所有必要的状态都准备好
+  if (isLoading || appState === 'loading') {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" />
@@ -68,7 +87,6 @@ function AppContent() {
   }
 
   if (!isAppleAuthAvailable) {
-    console.log('Apple Sign In not available');
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <Text>Apple Sign In is not available on this device.</Text>
@@ -76,23 +94,40 @@ function AppContent() {
     );
   }
 
-  if (!user) {
-    console.log('No user, showing Welcome screen');
-    return <Welcome />;
-  }
+  const renderContent = () => {
+    switch (appState) {
+      case 'welcome':
+        return <Welcome />;
+      case 'setup':
+        return <SetupProfile />;
+      case 'main':
+        return (
+          <Stack>
+            <Stack.Screen 
+              name="(tabs)" 
+              options={{ 
+                headerShown: false,
+                animation: 'none'
+              }} 
+            />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+        );
+      case 'checking':
+        return (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" />
+          </View>
+        );
+      default:
+        return null;
+    }
+  };
 
-  // 如果用户已登录但未设置用户名，显示设置页面
-  if (!profile?.username) {
-    console.log('User has no username, showing SetupProfile');
-    return <SetupProfile />;
-  }
-
-  console.log('User profile complete, showing main app');
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" />
-    </Stack>
+    <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+      {renderContent()}
+    </Animated.View>
   );
 }
 
@@ -102,9 +137,9 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  useEffect(() => {
+  const onLayoutRootView = useCallback(async () => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      await SplashScreen.hideAsync();
     }
   }, [loaded]);
 
@@ -113,11 +148,12 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AppContent />
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </AuthProvider>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AuthProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <AppContent />
+        </View>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
